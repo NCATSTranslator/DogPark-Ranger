@@ -1,10 +1,13 @@
 import asyncio
+from copy import deepcopy
 from datetime import datetime
 from functools import partial
 from types import SimpleNamespace
-from typing import Callable
+from typing import Callable, Generator
 
 from biothings.hub.dataindex.indexer import Indexer, _BuildBackend, _BuildDoc, ProcessInfo
+from biothings.hub.dataindex.indexer_payload import IndexSettings, IndexMappings, DEFAULT_INDEX_SETTINGS, \
+    DEFAULT_INDEX_MAPPINGS
 from biothings.hub.dataindex.indexer_task import (
     IndexingTask,
     Mode,
@@ -35,13 +38,14 @@ class MissingNodeCollectionError(Exception):
         super.__init__()
 
 
-class RTXKG2Indexer(Indexer):
+class KGXIndexer(Indexer):
     """
     RTXKG2 Knowledge Graph custom indexer
     """
 
     def __init__(self, build_doc: dict, indexer_env: dict, index_name: str):
 
+        super().__init__(build_doc, indexer_env, index_name)
         _build_doc = _BuildDoc(build_doc)
 
         # mongodb edge client metadata
@@ -192,7 +196,7 @@ def dispatch(
     name,
 ):
     es_index_name = es_metadata[2]
-    return RTXKG2IndexingTask(
+    return KGXIndexingTask(
         partial(_get_es_client, *es_metadata),
         partial(_get_mg_client, *mongo_edge_metadata),
         partial(_get_mg_client, *mongo_node_metadata),
@@ -203,18 +207,18 @@ def dispatch(
     ).dispatch()
 
 
-class RTXKG2IndexingTask(IndexingTask):
+class KGXIndexingTask(IndexingTask):
     """
-    Overriden Indexing Task specific to the RTXKG2 knowledge graph
+    Overridden Indexing Task specific to the RTXKG2 knowledge graph
 
     Index one batch of documents from MongoDB to Elasticsearch.
     The documents to index are specified by their ids.
     """
 
-    def __init__(
-        self, es: Callable, edge_mongo: Callable, node_mongo: Callable, ids, mode=None, logger=None, name="task"
-    ):
+    def __init__(self, es: Callable, edge_mongo: Callable, node_mongo: Callable, ids, mongo, mode=None, logger=None,
+                 name="task"):
 
+        super().__init__(es, mongo, ids, mode, logger, name)
         assert callable(es)
         assert callable(edge_mongo)
         assert callable(node_mongo)
@@ -232,18 +236,19 @@ class RTXKG2IndexingTask(IndexingTask):
         # of batch document manipulation.
         self.backend = SimpleNamespace()
         self.backend.es = es  # wrt an index
-        self.backend.edge_mongo = edge_mongo  # wrt a collection
-        self.backend.node_mongo = edge_mongo  # wrt a collection
+
+        self.backend.edge_collection = edge_mongo  # wrt a collection
+        self.backend.node_collection = node_mongo  # wrt a collection
 
     def index(self):
         """
-        Overriden from base index function to handle the merging of nodes and edges
+        Overridden from base index function to handle the merging of nodes and edges
 
-        The main index we supply will contain all the nodes we care about from RTXKG2,
-        and we want to merge the edges from an external target backend collection
+        The main index we supply will contain all the edges we care about from RTXKG2,
+        and we want to merge the nodes from an external target backend collection
         """
         edge_docs = doc_feeder(
-            self.backend.edge_mongo,
+            self.backend.edge_collection,
             step=len(self.ids),
             inbatch=False,
             query={"_id": {"$in": self.ids}},
