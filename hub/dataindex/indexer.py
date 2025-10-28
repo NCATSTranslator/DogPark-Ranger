@@ -3,7 +3,7 @@ from copy import deepcopy
 from datetime import datetime
 from functools import partial
 from types import SimpleNamespace
-from typing import Callable, Generator
+from typing import Callable
 
 from biothings.hub.dataindex.indexer import Indexer, _BuildBackend, _BuildDoc, ProcessInfo
 from biothings.hub.dataindex.indexer_payload import IndexSettings, IndexMappings, DEFAULT_INDEX_SETTINGS, \
@@ -17,6 +17,7 @@ from biothings.hub.dataindex.indexer_task import (
     _validate_ids,
 )
 from biothings.hub.dataindex.indexer_schedule import Schedule, SchedulerMismatchError
+from biothings.utils import mongo
 
 from biothings.utils.mongo import DatabaseClient, id_feeder
 from biothings.utils.common import iter_n
@@ -35,7 +36,12 @@ except ImportError:
 class MissingNodeCollectionError(Exception):
     def __init__(self, discovered_collections: list[str], database):
         # TODO add error message for identifying the backend with the messing  node collecton / target database for user
-        super.__init__()
+
+        message = (
+            f"Missing node collections {discovered_collections} "
+            f"in database {database}"
+        )
+        super().__init__(message)
 
 
 class KGXIndexer(Indexer):
@@ -83,7 +89,7 @@ class KGXIndexer(Indexer):
         self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
-    async def _build_node_backend_client(self, build_doc: _BuildDoc) -> _BuildBackend:
+    def _build_node_backend_client(self, build_doc: _BuildDoc) -> _BuildBackend:
         """
         Internal method for building a mongodb client specifically
         for the node collection from the BuildDoc, separate from the
@@ -102,7 +108,7 @@ class KGXIndexer(Indexer):
                 backend_url,
             )
             return node_build_backend
-        raise MissingNodeCollectionError(db, discovered_collections)
+        raise MissingNodeCollectionError(discovered_collections, db)
 
     async def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
         client = DatabaseClient(**self.mongo_edge_client_args)
@@ -215,10 +221,10 @@ class KGXIndexingTask(IndexingTask):
     The documents to index are specified by their ids.
     """
 
-    def __init__(self, es: Callable, edge_mongo: Callable, node_mongo: Callable, ids, mongo, mode=None, logger=None,
+    def __init__(self, es: Callable, edge_mongo: Callable, node_mongo: Callable, ids, mode=None, logger=None,
                  name="task"):
 
-        super().__init__(es, mongo, ids, mode, logger, name)
+        # super().__init__(es, mongo, ids, mode, logger, name)
         assert callable(es)
         assert callable(edge_mongo)
         assert callable(node_mongo)
@@ -235,7 +241,10 @@ class KGXIndexingTask(IndexingTask):
         # functioning as the source or destination
         # of batch document manipulation.
         self.backend = SimpleNamespace()
-        self.backend.es = es  # wrt an index
+        self.backend.es = es()  # wrt an index
+        self.backend.edge_collection = edge_mongo()  # wrt a collection
+        self.backend.node_collection = node_mongo()  # wrt a collection
+
 
         self.backend.edge_collection = edge_mongo  # wrt a collection
         self.backend.node_collection = node_mongo  # wrt a collection
