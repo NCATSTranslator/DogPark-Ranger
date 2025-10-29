@@ -96,7 +96,8 @@ class KGXIndexer(Indexer):
         backend = build_doc.get("target_backend")
         backend_url = build_doc["build_config"]["node_collection"]
 
-        db = backend.mongo.get_target_db()
+        db = mongo.get_src_db()
+
 
         discovered_collections = db.list_collection_names()
         if backend_url in discovered_collections:
