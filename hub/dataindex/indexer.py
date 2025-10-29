@@ -245,8 +245,99 @@ class KGXIndexingTask(IndexingTask):
         self.backend.node_collection = node_mongo()  # wrt a collection
 
 
-        self.backend.edge_collection = edge_mongo  # wrt a collection
-        self.backend.node_collection = node_mongo  # wrt a collection
+    def build_node_cache(self):
+        # prefetch necessary node ids
+        edge_docs = self.backend.edge_collection.find(
+            filter={"_id": {"$in": self.ids}},
+            projection={"subject": 1, "object": 1},
+        )
+
+        node_cache = {}
+
+        for edge in edge_docs:
+            node_cache[edge["subject"]] = None
+            node_cache[edge["object"]] = None
+
+
+        node_docs = self.backend.node_collection.find(
+            filter={"_id": {"$in": list(node_cache.keys())}},
+        )
+
+        for node_doc in node_docs:
+            _id = node_doc["_id"]
+            node_doc.pop("_id", None)
+            node_cache[_id] = node_doc
+
+
+
+        return node_cache
+
+
+    def _index(self):
+        """
+        Alternative indexing method
+        """
+
+        node_cache = self.build_node_cache()
+
+        edge_docs = doc_feeder(
+            self.backend.edge_collection,
+            step=len(self.ids),
+            inbatch=False,
+            query={"_id": {"$in": self.ids}},
+        )
+
+        def update_edge(edge):
+            edge["subject"] = node_cache[edge["subject"]]
+            edge["object"] = node_cache[edge["object"]]
+
+
+
+
+            return edge
+
+        updated_edges = map(update_edge, edge_docs)
+
+        self.logger.info("%s: %d documents.", self.name, len(self.ids))
+        count_docs = self.backend.es.mindex(updated_edges)
+        return count_docs + len(self.invalid_ids)
+
+
+    def merge_nodes_traffic_heavy(self, node_cache, edge_doc):
+        subject_id = edge_doc["subject"]
+        object_id = edge_doc["object"]
+
+        query_ids = []
+
+        for node_id in [subject_id, object_id]:
+            if node_id not in node_cache:
+                query_ids.append(node_id)
+            else:
+                for field in ["subject", "object"]:
+                    if edge_doc[field] == node_id:
+                        edge_doc[field] = node_cache[node_id]
+
+
+        if query_ids:
+            node_docs = doc_feeder(
+                self.backend.node_collection,
+                step=len(query_ids),
+                inbatch=False,
+                query={"_id": {"$in": query_ids}},
+            )
+
+            for node_doc in node_docs:
+                # remove _id from node
+                _id = node_doc["_id"]
+                node_doc.pop("_id", None)
+
+                # update cache
+                node_cache[_id] = node_doc
+                for field in ["subject", "object"]:
+                    if edge_doc[field] == _id:
+                        edge_doc[field] = node_doc
+
+        return edge_doc
 
     def index(self):
         """
@@ -261,6 +352,11 @@ class KGXIndexingTask(IndexingTask):
             inbatch=False,
             query={"_id": {"$in": self.ids}},
         )
+        # method 2
+        node_cache = {}
+        edge_docs = map(partial(self.merge_nodes_traffic_heavy, node_cache), edge_docs)
+
+
         self.logger.info("%s: %d documents.", self.name, len(self.ids))
         count_docs = self.backend.es.mindex(edge_docs)
         return count_docs + len(self.invalid_ids)
