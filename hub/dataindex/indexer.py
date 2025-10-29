@@ -35,8 +35,6 @@ except ImportError:
 
 class MissingNodeCollectionError(Exception):
     def __init__(self, discovered_collections: list[str], database):
-        # TODO add error message for identifying the backend with the messing  node collecton / target database for user
-
         message = (
             f"Missing node collections {discovered_collections} "
             f"in database {database}"
