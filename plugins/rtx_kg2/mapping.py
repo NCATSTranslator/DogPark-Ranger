@@ -1,4 +1,3 @@
-
 def merged_edges_mapping(cls):
     default_text = {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}}
     default_keyword = {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}
@@ -56,3 +55,22 @@ def merged_edges_mapping(cls):
             },
     }
 
+
+def nodes_mapping(cls):
+    default_text = {"type": "text", "fields": {"keyword": {"type": "keyword", "ignore_above": 256}}}
+    default_keyword = {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}
+
+
+    nodes_props = {
+        "all_categories": default_keyword,
+        "all_names": default_text,
+        "category": default_keyword,
+        "description": {"type": "text", "index": False},
+        "equivalent_curies": default_keyword,
+        "id": default_keyword,
+        "iri": {"type": "text", "index": False},
+        "name": default_text,
+        "publications": default_text,
+    }
+
+    return nodes_props
