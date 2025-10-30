@@ -50,6 +50,9 @@ class KGXIndexer(Indexer):
     def __init__(self, build_doc: dict, indexer_env: dict, index_name: str):
 
         super().__init__(build_doc, indexer_env, index_name)
+
+        print("using KGXIndexer")
+
         _build_doc = _BuildDoc(build_doc)
 
         # mongodb edge client metadata
@@ -95,6 +98,12 @@ class KGXIndexer(Indexer):
         """
         backend = build_doc.get("target_backend")
         backend_url = build_doc["build_config"]["node_collection"]
+        # backend_url = ['src', 'CEBS_nodes']
+        # backend_url = 'CEBS_nodes'
+        # backend_url = "DrugCentral_nodes"
+        # backend_url = "rtx_nodes"
+
+        # backend_url = "ctd_nodes"
 
         db = mongo.get_src_db()
 
@@ -273,7 +282,7 @@ class KGXIndexingTask(IndexingTask):
         return node_cache
 
 
-    def _index(self):
+    def index(self):
         """
         Alternative indexing method
         """
@@ -339,7 +348,7 @@ class KGXIndexingTask(IndexingTask):
 
         return edge_doc
 
-    def index(self):
+    def _index(self):
         """
         Overridden from base index function to handle the merging of nodes and edges
 
