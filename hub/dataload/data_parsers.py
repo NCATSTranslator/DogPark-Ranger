@@ -6,6 +6,8 @@ from contextlib import contextmanager
 import jsonlines
 from typing import Union, Literal
 
+from biothings.utils.common import open_anyfile
+
 from hub.dataload.utils.flatten_publication import process_publications
 from hub.dataload.utils.process_category import process_category
 from hub.dataload.utils.process_predicate import process_predicate
@@ -80,6 +82,31 @@ def load_edges(data_folder: Union[str, pathlib.Path]):
 def load_nodes(data_folder: Union[str, pathlib.Path]):
     """ Stream node data from given JSONL file """
     yield from loader(data_folder, "nodes", gen_id=True)
+
+
+@buffered_yield(EDGE_BUFFER_SIZE)
+def read_compressed(compressed_file_path: Union[str, pathlib.Path], target_file: str, gen_id=False):
+    """ Read a target jsonl from a bundled/compressed file without decompressing"""
+    with open_anyfile((compressed_file_path, target_file)) as f:
+        reader = jsonlines.Reader(f)
+        index = 0
+
+        for doc in reader:
+            if doc:
+                if gen_id:
+                    # todo error handling for no id, especially with edges
+                    doc["_id"] = str(doc["id"]) if "id" in doc else str(index)
+                index += 1
+                yield doc
+
+
+
+def load_from_tar(data_folder: Union[str, pathlib.Path], file_name: str, entity: Literal['edges', 'nodes'], gen_id=True):
+    """ Stream edge data from given JSONL file """
+    data_folder = pathlib.Path(data_folder).resolve().absolute()
+    tar_file = data_folder.joinpath(file_name)
+    target_file = f"{entity}.jsonl"
+    yield from read_compressed(tar_file, target_file, gen_id)
 
 
 
