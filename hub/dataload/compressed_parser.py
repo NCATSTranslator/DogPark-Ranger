@@ -39,7 +39,7 @@ def load_from_tar(data_folder: Union[str, pathlib.Path], entity: Literal['edges'
 
     if file_name is None:
         files = [
-            f for f in glob.glob(os.path.join(data_folder, "*"))
+            f for f in data_folder.glob('*')
             if not os.path.basename(f).startswith("._")
         ]
 
