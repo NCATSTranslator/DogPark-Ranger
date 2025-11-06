@@ -12,3 +12,5 @@ def process_predicate(edge, predicate_cache: dict):
             edge[TARGET_FIELD_NAME] = ancestors
 
         edge[ORIGIN_FIELD_NAME] = remove_biolink_prefix(predicate)
+
+    return edge
