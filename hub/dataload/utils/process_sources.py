@@ -32,6 +32,7 @@ def process_sources(edge):
     # loop over `sources` fields
     for source_entry in sources:
         resource_role = source_entry.get(RESOURCE_ROLE_FIELD)
+        resource_id = source_entry.get(RESOURCE_ID_FIELD)
 
         # skip invalid entries
         if not resource_role:
@@ -43,18 +44,18 @@ def process_sources(edge):
             del edge[resource_role]
 
         # update inforeses
-        inforeses.add(resource_role)
+        inforeses.add(resource_id)
 
 
     # check if any individual fields not in sources
     while fields_not_in_sources:
         field = fields_not_in_sources.pop()
+        field_value = edge[field]
 
         # update inforeses
-        inforeses.add(field)
+        inforeses.add(field_value)
 
         # update sources field
-        field_value = edge[field]
         sources.append({
             RESOURCE_ROLE_FIELD: field,
             RESOURCE_ID_FIELD: field_value,
