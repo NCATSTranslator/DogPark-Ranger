@@ -1,0 +1,99 @@
+# Node properties
+id: string @index(exact) .
+name: string .
+in_taxon: [string] @index(exact) .
+information_content: float @index(float) .
+category: [string] @index(exact) .
+inheritance: string .
+provided_by: [string] .
+description: string .
+equivalent_identifiers: [string] .
+
+# Edge properties
+predicate: string @index(exact) .
+predicate_ancestors: [string] @index(exact) .
+agent_type: string @index(exact) .
+knowledge_level: string @index(exact) .
+publications: [string] @index(exact) .
+source_inforeses: [string] @index(exact) .
+subject_form_or_variant_qualifier: string @index(exact) .
+qualified_predicate: string @index(exact) .
+disease_context_qualifier: string @index(exact) .
+frequency_qualifier: string @index(exact) .
+onset_qualifier: string @index(exact) .
+sex_qualifier: string @index(exact) .
+
+original_subject: string .
+original_predicate: string .
+original_object: string .
+allelic_requirement: string .
+update_date: string .
+z_score: float .
+has_evidence: [string] .
+has_confidence_score: float .
+has_count: float .
+has_total: float .
+has_percentage: float .
+has_quotient: float .
+sources: string .
+eid: string .
+ecategory: [string] .
+
+# Relationship between nodes and edges
+object: uid @reverse @count .
+subject: uid @reverse @count .
+
+type Node {
+  id
+  name
+  in_taxon
+  information_content
+  category
+  inheritance
+  provided_by
+  description
+  equivalent_identifiers
+}
+
+type Edge {
+  predicate
+  predicate_ancestors
+  agent_type
+  knowledge_level
+  publications
+  source_inforeses
+  subject_form_or_variant_qualifier
+  qualified_predicate
+  disease_context_qualifier
+  frequency_qualifier
+  onset_qualifier
+  sex_qualifier
+
+  original_subject
+  original_predicate
+  original_object
+  allelic_requirement
+  update_date
+  z_score
+  has_evidence
+  has_confidence_score
+  has_count
+  has_total
+  has_percentage
+  has_quotient
+  sources
+  eid
+  ecategory
+
+  object
+  subject
+}
+
+# SchemaMetadata type to track the active version
+schema_metadata_version: string @index(exact) .
+schema_metadata_is_active: bool @index(bool) .
+
+type SchemaMetadata {
+    schema_metadata_version
+    schema_metadata_is_active
+}
