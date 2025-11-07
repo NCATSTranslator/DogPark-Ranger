@@ -53,6 +53,24 @@ def load_nodes(data_folder: Union[str, pathlib.Path]):
     yield from loader(data_folder, "nodes", gen_id=True)
 
 
+def load_edges_with_processing(data_folder: Union[str, pathlib.Path]):
+    """ Stream edge data from given JSONL file """
+    predicate_cache = {}
+    for edge in loader(data_folder, "edges", gen_id=True):
+        process_predicate(edge, predicate_cache)
+        yield edge
+
+
+
+def load_nodes_with_processing(data_folder: Union[str, pathlib.Path]):
+    """ Stream node data from given JSONL file """
+    category_cache = {}
+
+    for node in loader(data_folder, "nodes", gen_id=True):
+        process_category(node, category_cache)
+        yield node
+
+
 @buffered_yield(EDGE_BUFFER_SIZE)
 def load_merged_edges(data_folder: Union[str, pathlib.Path]):
     """ Generate merged edge data"""
