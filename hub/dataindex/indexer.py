@@ -78,6 +78,26 @@ class KGXIndexer(Indexer):
         self.es_index_settings = IndexSettings(deepcopy(DEFAULT_INDEX_SETTINGS))
         self.es_index_mappings = IndexMappings(deepcopy(DEFAULT_INDEX_MAPPINGS))
 
+
+
+        # add tokenizer to settings
+        self.es_index_settings.update({
+            "analysis": {
+              "analyzer": {
+                "curie_analyzer": {
+                  "type": "custom",
+                  "tokenizer": "curie_tokenizer"
+                }
+              },
+              "tokenizer": {
+                "curie_tokenizer": {
+                  "type": "pattern",
+                  "pattern": ":"
+                }
+              }
+            }
+        })
+
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
 
