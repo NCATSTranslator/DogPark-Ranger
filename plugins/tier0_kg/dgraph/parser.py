@@ -218,11 +218,22 @@ def node_to_rdf(node, version_prefix, include_remaining=False):
 
     handled = set(["id"])
 
+    # name
+    node_name = node.get("name", "")
+    if node_name:
+        lines.append(f'{uid} <{version_prefix}_name> {rdf_literal(node_name)} .')
+        handled.add("name")
+
     # description
     node_description = node.get("description", "")
     if node_description:
         lines.append(f'{uid} <{version_prefix}_description> {rdf_literal(node_description)} .')
         handled.add("description")
+
+    node_inheritance = node.get("inheritance", "")
+    if node_inheritance:
+        lines.append(f'{uid} <{version_prefix}_inheritance> {rdf_literal(node_inheritance)} .')
+        handled.add("inheritance")
 
     node_information_content = node.get("information_content", "")
     if node_information_content:
@@ -236,6 +247,13 @@ def node_to_rdf(node, version_prefix, include_remaining=False):
             lines.append(f'{uid} <{version_prefix}_category> {rdf_literal(extract_category_type(cat))} .')
         handled.add("category")
     
+    # Handle provided_by list
+    provided_by = node.get("provided_by", [])
+    if provided_by:
+        for pb in provided_by:
+            lines.append(f'{uid} <{version_prefix}_provided_by> {rdf_literal(pb)} .')
+        handled.add("provided_by")
+
     # Handle equivalent_identifiers list
     equivalent_identifiers = node.get("equivalent_identifiers", [])
     if equivalent_identifiers:
@@ -438,9 +456,6 @@ def edge_to_rdf_with_edge_type(edge, edge_counter, version_prefix, include_remai
         lines.append(f'{edge_uid} <{version_prefix}_knowledge_level> {json.dumps(edge_knowledge_level)} .')
         handled.add("knowledge_level")
 
-
-
-
     edge_publications = edge.get("publications", [])
     if edge_publications:
         for pub in edge_publications:
@@ -564,11 +579,8 @@ def edge_to_rdf_with_edge_type(edge, edge_counter, version_prefix, include_remai
     edge_category = edge.get("category", "")
     if edge_category:
         for cat in edge_category:
-            lines.append(f'{edge_uid} <{version_prefix}_ecategory> {rdf_literal(cat)} .')
+            lines.append(f'{edge_uid} <{version_prefix}_ecategory> {rdf_literal(extract_category_type(cat))} .')
         handled.add("ecategory")
-
-
-
 
     # Handle publications as list
     publications = edge.get("publications", [])
