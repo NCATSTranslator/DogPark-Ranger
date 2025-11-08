@@ -35,13 +35,19 @@ has_count: float .
 has_total: float .
 has_percentage: float .
 has_quotient: float .
-sources: string .
 eid: string .
 ecategory: [string] .
 
 # Relationship between nodes and edges
 object: uid @reverse @count .
 subject: uid @reverse @count .
+
+# Source properties
+resource_id: string @index(exact) .
+resource_role: string @index(exact) .
+
+# Relationship between edges and sources
+sources: [uid] @reverse .
 
 type Node {
   id
@@ -87,6 +93,11 @@ type Edge {
 
   object
   subject
+}
+
+type Source {
+    resource_id
+    resource_role
 }
 
 # SchemaMetadata type to track the active version

@@ -565,11 +565,24 @@ def edge_to_rdf_with_edge_type(edge, edge_counter, version_prefix, include_remai
     # Get all sources from other *_source fields including sources list
     all_sources = extract_all_sources(edge)
     # Add sources field with all sources
+
+    # if all_sources:
+    #     sources_string = json.dumps(all_sources)
+    #     escaped_sources_string = sources_string.replace('"', '\\"')
+    #     lines.append(f'{edge_uid} <{version_prefix}_sources> "{escaped_sources_string}" .')
+    #     handled.add("sources")
     if all_sources:
-        sources_string = json.dumps(all_sources)
-        escaped_sources_string = sources_string.replace('"', '\\"')
-        lines.append(f'{edge_uid} <{version_prefix}_sources> "{escaped_sources_string}" .')
+        for source_obj in all_sources:
+            # Create a new blank node for each source
+            source_bnode = f'_:b{uuid.uuid4().hex[:12]}'
+            # Link the edge to the new source node
+            lines.append(f'{edge_uid} <{version_prefix}_sources> {source_bnode} .')
+            # Define the new source node
+            lines.append(f'{source_bnode} <dgraph.type> "{version_prefix}_Source" .')
+            lines.append(f'{source_bnode} <{version_prefix}_resource_id> {rdf_literal(source_obj.get("resource_id"))} .')
+            lines.append(f'{source_bnode} <{version_prefix}_resource_role> {rdf_literal(source_obj.get("resource_role"))} .')
         handled.add("sources")
+
 
     edge_eid = edge.get("id", "")
     if edge_eid:
