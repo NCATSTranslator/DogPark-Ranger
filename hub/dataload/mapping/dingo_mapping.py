@@ -19,7 +19,7 @@ def nodes_mapping(cls):
     }
     index_disabled_bool = {"type": "boolean", "index": False}
     index_disabled_float = {"type": "float", "index": False}
-    index_disabled_object = {"type": "object", "enable": False}
+    index_disabled_object = {"type": "object", "enabled": False}
     index_disabled_date = {"type": "date", "index": False}
 
 
@@ -59,7 +59,7 @@ def merged_edges_mapping(cls):
     }
     index_disabled_bool = {"type": "boolean", "index": False}
     index_disabled_float = {"type": "float", "index": False}
-    index_disabled_object = {"type": "object", "enable": False}
+    index_disabled_object = {"type": "object", "enabled": False}
     index_disabled_date = {"type": "date", "index": False}
 
     edges_props = {
