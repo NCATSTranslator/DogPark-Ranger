@@ -81,22 +81,32 @@ class KGXIndexer(Indexer):
 
 
         # add tokenizer to settings
-        self.es_index_settings.update({
-            "analysis": {
-              "analyzer": {
-                "curie_analyzer": {
+        self.es_index_settings["analysis"]["analyzer"]["curie_analyzer"] = {
                   "type": "custom",
                   "tokenizer": "curie_tokenizer"
                 }
-              },
-              "tokenizer": {
-                "curie_tokenizer": {
+
+        self.es_index_settings["analysis"]["tokenizer"]["curie_tokenizer"] =  {
                   "type": "pattern",
                   "pattern": ":"
-                }
-              }
-            }
-        })
+        }
+
+        # self.es_index_settings.update({
+        #     "analysis": {
+        #       "analyzer": {
+        #         "curie_analyzer": {
+        #           "type": "custom",
+        #           "tokenizer": "curie_tokenizer"
+        #         }
+        #       },
+        #       "tokenizer": {
+        #         "curie_tokenizer": {
+        #           "type": "pattern",
+        #           "pattern": ":"
+        #         }
+        #       }
+        #     }
+        # })
 
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
