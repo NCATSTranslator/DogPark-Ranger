@@ -61,9 +61,13 @@ class KGXIndexer(Indexer):
         self.mongo_edge_database_name = edge_build.dbs
         self.mongo_edge_collection_name = edge_build.col
 
+
+
         # mongodb node client metadata
         # Need to acquire the RTXKG2 nodes collection from mongodb
-        node_build = self._build_node_backend_client(build_doc)
+        col_name = edge_build.col.split("_")[0]
+
+        node_build = self._build_node_backend_client(build_doc, col_name)
         self.mongo_node_client_args = node_build.args
         self.mongo_node_database_name = node_build.dbs
         self.mongo_node_collection_name = node_build.col
@@ -94,22 +98,6 @@ class KGXIndexer(Indexer):
             }
         }
 
-        # self.es_index_settings.update({
-        #     "analysis": {
-        #       "analyzer": {
-        #         "curie_analyzer": {
-        #           "type": "custom",
-        #           "tokenizer": "curie_tokenizer"
-        #         }
-        #       },
-        #       "tokenizer": {
-        #         "curie_tokenizer": {
-        #           "type": "pattern",
-        #           "pattern": ":"
-        #         }
-        #       }
-        #     }
-        # })
 
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
@@ -123,14 +111,17 @@ class KGXIndexer(Indexer):
         self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
-    def _build_node_backend_client(self, build_doc: _BuildDoc) -> _BuildBackend:
+    def _build_node_backend_client(self, build_doc: _BuildDoc, col_name:str) -> _BuildBackend:
         """
         Internal method for building a mongodb client specifically
         for the node collection from the BuildDoc, separate from the
         default client that targets the edges
         """
-        backend = build_doc.get("target_backend")
-        backend_url = build_doc["build_config"]["node_collection"]
+
+        try:
+            backend_url = build_doc["build_config"]["node_collection"]
+        except KeyError:
+            backend_url = col_name + "_nodes"
         # backend_url = ['src', 'CEBS_nodes']
         # backend_url = 'CEBS_nodes'
         # backend_url = "DrugCentral_nodes"
@@ -332,8 +323,6 @@ class KGXIndexingTask(IndexingTask):
         def update_edge(edge):
             edge["subject"] = node_cache[edge["subject"]]
             edge["object"] = node_cache[edge["object"]]
-
-
 
 
             return edge
