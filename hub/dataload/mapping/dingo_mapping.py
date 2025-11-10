@@ -17,10 +17,6 @@ def nodes_mapping(cls):
         **default_simple_text,
         "index": False
     }
-    index_disabled_bool = {"type": "boolean", "index": False}
-    index_disabled_float = {"type": "float", "index": False}
-    index_disabled_object = {"type": "object", "enabled": False}
-    index_disabled_date = {"type": "date", "index": False}
 
 
     nodes_props = {
@@ -67,12 +63,12 @@ def merged_edges_mapping(cls):
         "allelic_requirement": index_disabled_text,
         "category": index_disabled_text,
 
-        "has_confidence_score": index_disabled_bool,
-        "has_count": index_disabled_bool,
-        "has_evidence": index_disabled_bool,
-        "has_percentage": index_disabled_bool,
-        "has_quotient": index_disabled_bool,
-        "has_total": index_disabled_bool,
+        "has_confidence_score": index_disabled_float,
+        "has_count": index_disabled_float,
+        "has_evidence": index_disabled_text,
+        "has_percentage": index_disabled_float,
+        "has_quotient": index_disabled_float,
+        "has_total": index_disabled_float,
 
         "id": index_disabled_text,
         "knowledge_level": default_keyword,
