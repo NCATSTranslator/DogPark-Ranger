@@ -86,9 +86,12 @@ class KGXIndexer(Indexer):
                   "tokenizer": "curie_tokenizer"
                 }
 
-        self.es_index_settings["analysis"]["tokenizer"]["curie_tokenizer"] =  {
-                  "type": "pattern",
-                  "pattern": ":"
+        self.es_index_settings["analysis"]["tokenizer"] = {
+            "curie_tokenizer": {
+                "type": "pattern",
+                "pattern": ":"
+
+            }
         }
 
         # self.es_index_settings.update({
