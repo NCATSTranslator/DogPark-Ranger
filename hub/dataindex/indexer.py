@@ -102,6 +102,10 @@ class KGXIndexer(Indexer):
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
 
+
+        # hard-coded for now to save time on builder creation
+        self.es_index_settings['number_of_shards'] = 5
+
         # -----------info-----------
 
         self.env_name = indexer_env.get("name")
