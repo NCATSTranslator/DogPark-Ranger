@@ -6,7 +6,7 @@ def nodes_mapping(cls):
     default_keyword = {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}
     default_curie_keyword = {
         **default_simple_text,
-        "analyzer": "curie_tokenizer",
+        "analyzer": "curie_analyzer",
         "fields": {
             "keyword": {"type": "keyword"}
         }
@@ -46,7 +46,7 @@ def merged_edges_mapping(cls):
     default_keyword = {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}
     default_curie_keyword = {
         **default_simple_text,
-        "analyzer": "curie_tokenizer",
+        "analyzer": "curie_analyzer",
         "fields": {
             "keyword": {"type": "keyword"}
         }
