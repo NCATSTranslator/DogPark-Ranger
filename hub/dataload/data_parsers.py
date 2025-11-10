@@ -57,6 +57,7 @@ def load_edges_with_processing(data_folder: Union[str, pathlib.Path]):
     """ Stream edge data from given JSONL file """
     predicate_cache = {}
     for edge in loader(data_folder, "edges", gen_id=True):
+        process_publications(edge)
         process_predicate(edge, predicate_cache)
         yield edge
 
