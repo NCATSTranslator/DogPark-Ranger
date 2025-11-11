@@ -3,8 +3,8 @@
     "requires": ["jsonlines"],
     "dumper": {
         "data_url": [
-            "http://su06:8080/dataload/edges.jsonl.gz",
-            "http://su06:8080/dataload/nodes.jsonl.gz"
+            "http://su06:8080/dataupload/edges.jsonl.gz",
+            "http://su06:8080/dataupload/nodes.jsonl.gz"
         ],
         "uncompress": false,
         "release": "version:get_release",
