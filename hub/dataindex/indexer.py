@@ -65,9 +65,9 @@ class KGXIndexer(Indexer):
 
         # mongodb node client metadata
         # Need to acquire the RTXKG2 nodes collection from mongodb
-        col_name = edge_build.col.split("_")[0]
+        col_name = edge_build.col.replace("_edges", "")
 
-        node_build = self._build_node_backend_client(build_doc, col_name)
+        node_build = self._build_node_backend_client(_build_doc, col_name)
         self.mongo_node_client_args = node_build.args
         self.mongo_node_database_name = node_build.dbs
         self.mongo_node_collection_name = node_build.col
