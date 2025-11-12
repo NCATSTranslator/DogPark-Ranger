@@ -43,8 +43,10 @@ object: uid @reverse @count .
 subject: uid @reverse @count .
 
 # Source properties
-resource_id: string @index(exact) .
-resource_role: string @index(exact) .
+resource_id: string .
+resource_role: string .
+upstream_resource_ids: [string] .
+source_record_urls: [string] .
 
 # Relationship between edges and sources
 sources: [uid] @reverse .
@@ -98,6 +100,8 @@ type Edge {
 type Source {
     resource_id
     resource_role
+    upstream_resource_ids
+    source_record_urls
 }
 
 # SchemaMetadata type to track the active version

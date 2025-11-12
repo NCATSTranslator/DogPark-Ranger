@@ -173,10 +173,15 @@ def extract_all_sources(edge):
                 
                 if source_tuple not in unique_sources:
                     unique_sources.add(source_tuple)
-                    filtered_sources.append({
+                    source_data = {
                         "resource_id": resource_id,
                         "resource_role": resource_role
-                    })
+                    }
+                    if "upstream_resource_ids" in source:
+                        source_data["upstream_resource_ids"] = source["upstream_resource_ids"]
+                    if "source_record_urls" in source:
+                        source_data["source_record_urls"] = source["source_record_urls"]
+                    filtered_sources.append(source_data)
 
     # --- 2. Process other fields ending with '_source' ---
     for key, value in edge.items():
@@ -581,6 +586,17 @@ def edge_to_rdf_with_edge_type(edge, edge_counter, version_prefix, include_remai
             lines.append(f'{source_bnode} <dgraph.type> "{version_prefix}_Source" .')
             lines.append(f'{source_bnode} <{version_prefix}_resource_id> {rdf_literal(source_obj.get("resource_id"))} .')
             lines.append(f'{source_bnode} <{version_prefix}_resource_role> {rdf_literal(source_obj.get("resource_role"))} .')
+
+            upstream_ids = source_obj.get("upstream_resource_ids", [])
+            if upstream_ids:
+                for up_id in upstream_ids:
+                    lines.append(f'{source_bnode} <{version_prefix}_upstream_resource_ids> {rdf_literal(up_id)} .')
+
+            record_urls = source_obj.get("source_record_urls", [])
+            if record_urls:
+                for url in record_urls:
+                    lines.append(f'{source_bnode} <{version_prefix}_source_record_urls> {rdf_literal(url)} .')
+
         handled.add("sources")
 
 
