@@ -17,6 +17,7 @@ def node_processor(node):
 
 def edge_processor(predicate_cache: dict, edge):
     processors = [
+        process_category_list,
         process_qualifiers,
         process_sources,
         # we need cache to do faster ancestor look up
