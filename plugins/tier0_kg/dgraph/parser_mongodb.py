@@ -5,20 +5,20 @@ import re
 import argparse
 from pymongo import MongoClient
 from mongomock import MongoClient as MockMongoClient
+from typing import Dict, List, Tuple
 
 # --------------------------
 # CONFIGURATION
 # --------------------------
-MONGO_URI = "mongodb://localhost:27017"
-DB_NAME = "db_name"
-NODES_COLLECTION = "nodes_collection_name"
-EDGES_COLLECTION = "edges_collection_name"
-BATCH_SIZE = 2000                  # cursor batch size
-MAX_ITEMS = None                   # None for all, or set number for testing
-PREFIX_VERSION = "vTest"           # prefix for fields, types, uids
-SCHEMA_PATH = "schema.dgraph"      # original schema file
+# MONGO_URI = "mongodb://localhost:27017"
+# DB_NAME = "db_name"
+# NODES_COLLECTION = "nodes_collection_name"
+# EDGES_COLLECTION = "edges_collection_name"
+# BATCH_SIZE = 2000                  # cursor batch size
+# MAX_ITEMS = None                   # None for all, or set number for testing
+# PREFIX_VERSION = "vTest"           # prefix for fields, types, uids
+# SCHEMA_PATH = "schema.dgraph"      # original schema file
 # --------------------------
-
 
 def create_versioned_schema(schema_path, version_prefix):
     """
@@ -253,12 +253,69 @@ def load_mock_data(db, nodes_file, edges_file):
     print(f"Loaded {len(edges_data)} edges into mock DB.", file=sys.stderr)
 
 
+# def main():
+#     # --- Argument Parser for mock data ---
+#     parser = argparse.ArgumentParser(description="Stream data from MongoDB to Dgraph JSON format.")
+#     parser.add_argument('--mock', nargs=2, metavar=('NODES_FILE', 'EDGES_FILE'),
+#                         help='Use mock data from specified JSONL files instead of a live MongoDB connection.')
+#     args = parser.parse_args()
+
+#     # --- Create versioned schema first ---
+#     create_versioned_schema(SCHEMA_PATH, PREFIX_VERSION)
+
+#     if args.mock:
+#         # Use mongomock
+#         print("Using mock MongoDB.", file=sys.stderr)
+#         client = MockMongoClient()
+#         db = client[DB_NAME]
+#         # Load mock data from provided files
+#         load_mock_data(db, args.mock[0], args.mock[1])
+#     else:
+#         # Use real MongoDB connection
+#         print(f"Connecting to real MongoDB at {MONGO_URI}", file=sys.stderr)
+#         client = MongoClient(MONGO_URI)
+#         db = client[DB_NAME]
+
+#     stream_collection(
+#         db[NODES_COLLECTION],
+#         db[EDGES_COLLECTION],
+#         node_to_dgraph,
+#         edge_to_dgraph,
+#         source_to_dgraph,
+#     )
+
 def main():
     # --- Argument Parser for mock data ---
     parser = argparse.ArgumentParser(description="Stream data from MongoDB to Dgraph JSON format.")
+    
+    # Mock data arguments
     parser.add_argument('--mock', nargs=2, metavar=('NODES_FILE', 'EDGES_FILE'),
                         help='Use mock data from specified JSONL files instead of a live MongoDB connection.')
+    
+    # Configuration arguments
+    parser.add_argument('--mongo_uri', default="mongodb://localhost:27017", help='MongoDB connection URI.')
+    parser.add_argument('--db_name', default="db_name", help='MongoDB database name.')
+    parser.add_argument('--nodes_collection', default="nodes_collection_name", help='Nodes collection name.')
+    parser.add_argument('--edges_collection', default="edges_collection_name", help='Edges collection name.')
+    parser.add_argument('--batch_size', type=int, default=2000, help='Cursor batch size.')
+    parser.add_argument('--max_items', type=int, default=None, help='Maximum number of items to process (for testing). Set to -1 for no limit.')
+    parser.add_argument('--prefix_version', default="prefix_version", help='Prefix for Dgraph fields, types, and UIDs.')
+    parser.add_argument('--schema_path', default="schema.dgraph", help='Path to the original Dgraph schema file.')
+
     args = parser.parse_args()
+
+    # --- Update Global Variables from Arguments ---
+    global MONGO_URI, DB_NAME, NODES_COLLECTION, EDGES_COLLECTION, BATCH_SIZE, MAX_ITEMS, PREFIX_VERSION, SCHEMA_PATH
+    MONGO_URI = args.mongo_uri
+    DB_NAME = args.db_name
+    NODES_COLLECTION = args.nodes_collection
+    EDGES_COLLECTION = args.edges_collection
+    BATCH_SIZE = args.batch_size
+    # Handle case where no limit is desired
+    MAX_ITEMS = args.max_items if args.max_items else None
+    PREFIX_VERSION = args.prefix_version
+    SCHEMA_PATH = args.schema_path
+
 
     # --- Create versioned schema first ---
     create_versioned_schema(SCHEMA_PATH, PREFIX_VERSION)
