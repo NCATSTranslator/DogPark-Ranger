@@ -76,21 +76,19 @@ def get_release_for_renci_kgs(self):
     # https://github.com/biothings/pending.api/blob/master/plugins/upheno_ontology/version.py
     def get_last_edited_version():
         dates = []
-        date_pattern = re.compile(r'\d{1,2}_\d{1,2}_\d{4}')
 
         for url in self.__class__.SRC_URLS:
             res = self.client.head(url, allow_redirects=True)
-            header = res.headers['Content-Disposition']
-            match = date_pattern.findall(header)
-            if len(match) != 1:
-                raise ValueError("Parser Date Extraction Error")
-            dates.append(datetime.strptime(match[0], '%d_%m_%Y').date())
+            last_modified = res.headers.get('Last-Modified')
+            if not last_modified:
+                raise KeyError(f"No Last-Modified header for URL: {url}")
 
-        if dates[0] < dates[1]:
-            latest_version = dates[1]
-        else:
-            latest_version = dates[0]
+            # parse the Last-Modified header
+            dt = datetime.strptime(last_modified, '%a, %d %b %Y %H:%M:%S %Z').date()
+            dates.append(dt)
 
+        # Return the latest date
+        latest_version = max(dates)
         return latest_version.isoformat()
 
     self.logger.info("checking last edited date for version string")
