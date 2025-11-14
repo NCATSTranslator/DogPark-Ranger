@@ -436,7 +436,7 @@ def edge_to_rdf_with_edge_type(edge, edge_counter, version_prefix, include_remai
     ]
 
     handled = set(["subject", "object", "predicate"])
-    
+
     # Get all ancestor predicates using our cached function
     predicate_ancestors = extract_all_predicates_ancestors(predicate_type)
     # Add predicate_ancestors field with ancestor predicates
@@ -599,7 +599,6 @@ def edge_to_rdf_with_edge_type(edge, edge_counter, version_prefix, include_remai
 
         handled.add("sources")
 
-
     edge_eid = edge.get("id", "")
     if edge_eid:
         lines.append(f'{edge_uid} <{version_prefix}_eid> {json.dumps(edge_eid)} .')
@@ -610,13 +609,6 @@ def edge_to_rdf_with_edge_type(edge, edge_counter, version_prefix, include_remai
         for cat in edge_category:
             lines.append(f'{edge_uid} <{version_prefix}_ecategory> {rdf_literal(extract_category_type(cat))} .')
         handled.add("ecategory")
-
-    # Handle publications as list
-    publications = edge.get("publications", [])
-    if publications:
-        for pub in publications:
-            lines.append(f'{edge_uid} <{version_prefix}_publications> {json.dumps(pub)} .')
-        handled.add("publications")
 
     # Optionally emit any other remaining fields
     if include_remaining:
