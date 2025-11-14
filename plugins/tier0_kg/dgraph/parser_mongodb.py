@@ -298,7 +298,7 @@ def main():
     parser.add_argument('--nodes_collection', default="nodes_collection_name", help='Nodes collection name.')
     parser.add_argument('--edges_collection', default="edges_collection_name", help='Edges collection name.')
     parser.add_argument('--batch_size', type=int, default=2000, help='Cursor batch size.')
-    parser.add_argument('--max_items', type=int, default=None, help='Maximum number of items to process (for testing). Set to -1 for no limit.')
+    parser.add_argument('--max_items', type=int, default=None, help='Maximum number of items to process. Set to None for no limit.')
     parser.add_argument('--prefix_version', default="prefix_version", help='Prefix for Dgraph fields, types, and UIDs.')
     parser.add_argument('--schema_path', default="schema.dgraph", help='Path to the original Dgraph schema file.')
 
