@@ -43,7 +43,7 @@ def buffered_yield(size: int):
 
 
 @buffered_yield(NODE_BUFFER_SIZE)
-def read_jsonl(input_file: Union[str, pathlib.Path]):
+def read_jsonl(input_file: Union[str, pathlib.Path], gen_id=False):
     """ Common reader to load data from jsonl files """
 
     gzip_file = input_file.with_name(input_file.name + ".gz")
@@ -58,27 +58,28 @@ def read_jsonl(input_file: Union[str, pathlib.Path]):
         index = 0
         for doc in source:
             if doc:
-                # doc["_id"] = doc["id"] if "id" in doc else str(index)
+                if gen_id:
+                    doc["_id"] = str(doc["id"]) if "id" in doc else str(index)
                 index += 1
                 yield doc
 
 
 
-def loader(data_folder: Union[str, pathlib.Path], entity: Literal['edges', 'nodes']):
+def loader(data_folder: Union[str, pathlib.Path], entity: Literal['edges', 'nodes'], gen_id=False):
     """ Meta loader to stream edge data from given JSONL file """
     data_folder = pathlib.Path(data_folder).resolve().absolute()
     edge_file = data_folder.joinpath(f"{entity}.jsonl")
-    yield from read_jsonl(edge_file)
+    yield from read_jsonl(edge_file, gen_id)
 
 
 def load_edges(data_folder: Union[str, pathlib.Path]):
     """ Stream edge data from given JSONL file """
-    yield from loader(data_folder, "edges")
+    yield from loader(data_folder, "edges", gen_id=True)
 
 
 def load_nodes(data_folder: Union[str, pathlib.Path]):
     """ Stream node data from given JSONL file """
-    yield from loader(data_folder, "nodes")
+    yield from loader(data_folder, "nodes", gen_id=True)
 
 
 

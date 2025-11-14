@@ -12,10 +12,16 @@
     },
     "uploaders": [
         {
-            "name" : "rtx_kg2",
-            "parser": "hub.dataload.data_parsers:load_merged_edges",
+            "name" :"rtx_edges",
+            "parser": "hub.dataload.data_parsers:load_edges",
             "on_duplicates": "merge",
-            "mapping" : "mapping:merged_edges_mapping"
-        }
+            "mapping": "mapping:merged_edges_mapping"
+      },
+      {
+            "name" : "rtx_nodes",
+            "parser": "hub.dataload.data_parsers:load_nodes",
+            "on_duplicates": "merge",
+            "mapping": "mapping:nodes_mapping"
+      }
     ]
 }
