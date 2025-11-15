@@ -36,7 +36,7 @@ def read_compressed(
                 yield doc
 
 
-def load_from_tar(data_folder: Union[str, pathlib.Path], entity: Literal['edges', 'nodes'], file_name:Optional[str]=None, gen_id=True):
+def load_from_tar(data_folder: Union[str, pathlib.Path], entity: Literal['edges', 'nodes'], file_name:Optional[str]=None, gen_id=True, gen_seq=True):
     """ Stream data from given JSONL file """
     data_folder = pathlib.Path(data_folder).resolve().absolute()
 
@@ -62,4 +62,4 @@ def load_from_tar(data_folder: Union[str, pathlib.Path], entity: Literal['edges'
         raise FileNotFoundError(f"File {tar_file} not found.")
 
     target_file = f"{entity}.jsonl"
-    yield from read_compressed(tar_file, target_file, gen_id, gen_seq=True, expect_id=True)
+    yield from read_compressed(tar_file, target_file, gen_id, gen_seq=gen_seq, expect_id=True)

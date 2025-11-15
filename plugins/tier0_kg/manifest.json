@@ -25,7 +25,8 @@
             "name": "tier0_kg_edges",
             "parser": "hub.dataload.dingo_loader:parser",
             "parser_kwargs": {
-                "entity": "edges"
+                "entity": "edges",
+                "gen_seq": false
             },
             "on_duplicates": "error",
             "mapping": "hub.dataload.mapping.dingo_mapping:merged_edges_mapping"
