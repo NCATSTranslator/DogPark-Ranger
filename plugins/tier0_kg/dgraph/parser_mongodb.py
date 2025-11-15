@@ -186,11 +186,11 @@ def edge_to_dgraph(doc):
     return clean(edge)
 
 
-def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn):
+def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn, out_file):
     """
-    Stream nodes and edges as a single JSON array to stdout.
+    Stream nodes and edges as a single JSON array to the given output file/stream.
     """
-    sys.stdout.write("[\n")
+    out_file.write("[\n")
     first = True
 
     # Nodes
@@ -201,8 +201,8 @@ def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn):
             break
         item = node_fn(doc)
         if not first:
-            sys.stdout.write(",\n")
-        sys.stdout.write(json.dumps(item))
+            out_file.write(",\n")
+        out_file.write(json.dumps(item))
         first = False
         total_count += 1
 
@@ -215,20 +215,20 @@ def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn):
         for src in doc.get("sources", []):
             src_item = source_fn(src)
             if not first:
-                sys.stdout.write(",\n")
-            sys.stdout.write(json.dumps(src_item))
+                out_file.write(",\n")
+            out_file.write(json.dumps(src_item))
             first = False
 
         # Now emit the edge itself
         edge_item = edge_fn(doc)
         if not first:
-            sys.stdout.write(",\n")
-        sys.stdout.write(json.dumps(edge_item))
+            out_file.write(",\n")
+        out_file.write(json.dumps(edge_item))
         first = False
 
         total_count += 1
 
-    sys.stdout.write("\n]\n")
+    out_file.write("\n]\n")
 
 
 def load_mock_data(db, nodes_file, edges_file):
@@ -253,37 +253,6 @@ def load_mock_data(db, nodes_file, edges_file):
     print(f"Loaded {len(edges_data)} edges into mock DB.", file=sys.stderr)
 
 
-# def main():
-#     # --- Argument Parser for mock data ---
-#     parser = argparse.ArgumentParser(description="Stream data from MongoDB to Dgraph JSON format.")
-#     parser.add_argument('--mock', nargs=2, metavar=('NODES_FILE', 'EDGES_FILE'),
-#                         help='Use mock data from specified JSONL files instead of a live MongoDB connection.')
-#     args = parser.parse_args()
-
-#     # --- Create versioned schema first ---
-#     create_versioned_schema(SCHEMA_PATH, PREFIX_VERSION)
-
-#     if args.mock:
-#         # Use mongomock
-#         print("Using mock MongoDB.", file=sys.stderr)
-#         client = MockMongoClient()
-#         db = client[DB_NAME]
-#         # Load mock data from provided files
-#         load_mock_data(db, args.mock[0], args.mock[1])
-#     else:
-#         # Use real MongoDB connection
-#         print(f"Connecting to real MongoDB at {MONGO_URI}", file=sys.stderr)
-#         client = MongoClient(MONGO_URI)
-#         db = client[DB_NAME]
-
-#     stream_collection(
-#         db[NODES_COLLECTION],
-#         db[EDGES_COLLECTION],
-#         node_to_dgraph,
-#         edge_to_dgraph,
-#         source_to_dgraph,
-#     )
-
 def main():
     # --- Argument Parser for mock data ---
     parser = argparse.ArgumentParser(description="Stream data from MongoDB to Dgraph JSON format.")
@@ -301,6 +270,7 @@ def main():
     parser.add_argument('--max_items', type=int, default=None, help='Maximum number of items to process. Set to None for no limit.')
     parser.add_argument('--prefix_version', default="prefix_version", help='Prefix for Dgraph fields, types, and UIDs.')
     parser.add_argument('--schema_path', default="schema.dgraph", help='Path to the original Dgraph schema file.')
+    parser.add_argument('--output_file', default=None, help='Path to output JSON file. If not provided, streams to stdout.')
 
     args = parser.parse_args()
 
@@ -311,7 +281,6 @@ def main():
     NODES_COLLECTION = args.nodes_collection
     EDGES_COLLECTION = args.edges_collection
     BATCH_SIZE = args.batch_size
-    # Handle case where no limit is desired
     MAX_ITEMS = args.max_items if args.max_items else None
     PREFIX_VERSION = args.prefix_version
     SCHEMA_PATH = args.schema_path
@@ -333,13 +302,27 @@ def main():
         client = MongoClient(MONGO_URI)
         db = client[DB_NAME]
 
-    stream_collection(
-        db[NODES_COLLECTION],
-        db[EDGES_COLLECTION],
-        node_to_dgraph,
-        edge_to_dgraph,
-        source_to_dgraph,
-    )
+    if args.output_file:
+        print(f"Writing output to file: {args.output_file}", file=sys.stderr)
+        with open(args.output_file, 'w') as f:
+            stream_collection(
+                db[NODES_COLLECTION],
+                db[EDGES_COLLECTION],
+                node_to_dgraph,
+                edge_to_dgraph,
+                source_to_dgraph,
+                f  # Pass the file handle
+            )
+    else:
+        print("Streaming output to stdout.", file=sys.stderr)
+        stream_collection(
+            db[NODES_COLLECTION],
+            db[EDGES_COLLECTION],
+            node_to_dgraph,
+            edge_to_dgraph,
+            source_to_dgraph,
+            sys.stdout  # Pass stdout
+        )
 
 
 if __name__ == "__main__":
