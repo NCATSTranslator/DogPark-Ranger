@@ -48,6 +48,8 @@ def merged_edges_mapping(cls):
         }
     }
 
+    default_integer = {"type": "integer"}
+
     # def for not indexed types
     index_disabled_text = {
         **default_simple_text,
@@ -95,7 +97,10 @@ def merged_edges_mapping(cls):
         # maybe date type
         "update_date": index_disabled_date,
         "z_score": index_disabled_float,
-        "qualifiers": default_keyword
+        "qualifiers": default_keyword,
+
+        # internal control id, for sorting in ES
+        "seq_": default_integer
     }
 
     nodes_props = {

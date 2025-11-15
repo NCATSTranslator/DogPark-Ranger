@@ -16,6 +16,7 @@ def read_compressed(
         compressed_file_path: Union[str, pathlib.Path],
         target_file: str,
         gen_id=False,
+        gen_seq=False,
         expect_id=False
 ):
     """ Read a target jsonl from a bundled/compressed file without decompressing"""
@@ -29,6 +30,8 @@ def read_compressed(
                     raise Exception(f"id is expected for {target_file}")
                 if gen_id:
                     doc["_id"] = str(doc["id"]) if "id" in doc else str(index)
+                if gen_seq and "seq_" not in doc:
+                    doc["seq_"] = index
                 index += 1
                 yield doc
 
@@ -59,4 +62,4 @@ def load_from_tar(data_folder: Union[str, pathlib.Path], entity: Literal['edges'
         raise FileNotFoundError(f"File {tar_file} not found.")
 
     target_file = f"{entity}.jsonl"
-    yield from read_compressed(tar_file, target_file, gen_id, expect_id=True)
+    yield from read_compressed(tar_file, target_file, gen_id, gen_seq=True, expect_id=True)
