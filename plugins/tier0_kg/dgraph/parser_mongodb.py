@@ -109,8 +109,8 @@ def clean(d):
     """Remove None, NaN, empty lists, empty strings recursively and prefix field names"""
     if isinstance(d, dict):
         return {
-            # Only add prefix if the key is NOT 'uid'
-            (f"{PREFIX_VERSION}_{k}" if not k.startswith(PREFIX_VERSION + "_") and k != 'uid' else k): clean(v)
+            # Only add prefix if the key is NOT 'uid' or 'dgraph.type'
+            (f"{PREFIX_VERSION}_{k}" if not k.startswith(PREFIX_VERSION + "_") and k not in ('uid', 'dgraph.type') else k): clean(v)
             for k, v in d.items()
             if v is not None and not (isinstance(v, float) and v != v) and v != [] and v != ""
         }
