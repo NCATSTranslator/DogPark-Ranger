@@ -38,4 +38,8 @@ def parser(*args, **kwargs):
         else partial(edge_processor, {}) # initialize predicate look-up cache
     )
 
+    # disable sequence generation by default
+    if entity == "nodes" and kwargs.get('gen_seq', None) is None:
+        kwargs['gen_seq'] = False
+
     yield from map(processor_pipeline, load_from_tar(*args, **kwargs))
