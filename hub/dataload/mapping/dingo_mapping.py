@@ -97,13 +97,24 @@ def merged_edges_mapping(cls):
         # maybe date type
         "update_date": index_disabled_date,
         "z_score": index_disabled_float,
-        "qualifiers": {
-            "type": "nested",
-            "properties": {
-                "type_id": default_keyword,
-                "value": default_keyword,
-            }
-        },
+
+
+        # exploded qualifiers
+        "subject_form_or_variant_qualifier": default_keyword,
+        "qualified_predicate": default_keyword,
+        "disease_context_qualifier": default_keyword,
+        "frequency_qualifier": default_keyword,
+        "onset_qualifier": default_keyword,
+        "sex_qualifier": default_keyword,
+
+
+        # "qualifiers": {
+        #     "type": "nested",
+        #     "properties": {
+        #         "type_id": default_keyword,
+        #         "value": default_keyword,
+        #     }
+        # },
 
         # internal control id, for sorting in ES
         "seq_": default_integer
