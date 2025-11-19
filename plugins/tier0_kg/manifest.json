@@ -5,7 +5,7 @@
     ],
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/data_services/translator-ingests/kgx/translator_kg/latest/translator_kg.tar.xz"
+            "https://stars.renci.org/var/translator/releases/translator_kg/latest/translator_kg.tar.xz"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",

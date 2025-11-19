@@ -55,6 +55,12 @@ def get_release_for_renci_kgs(self):
                     break
 
                 # dingo
+                if "version" in metadata:
+                    generated_version = metadata["version"]
+                    self.logger.info(f"version determined automat style: {generated_version}")
+                    break
+
+                # legacy dingo
                 if "transform" in metadata:
                     transform_info = metadata['transform']
                     if isinstance(transform_info, dict):
