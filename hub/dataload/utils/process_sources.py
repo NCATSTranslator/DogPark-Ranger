@@ -53,13 +53,23 @@ def process_sources(edge):
         field_value = edge[field]
 
         # update inforeses
-        inforeses.add(field_value)
+        values = field_value
+
+        # in the newest DINGO update since Nov 19 2025, field_value can be a list
+        if isinstance(field_value, list):
+            inforeses.update(field_value)
+        elif isinstance(field_value, str):
+            values = [field_value]
+        else:
+            raise TypeError(f"invalid type found in field: {field} in edge: {edge.id}")
 
         # update sources field
-        sources.append({
-            RESOURCE_ROLE_FIELD: field,
-            RESOURCE_ID_FIELD: field_value,
-        })
+        for value in values:
+            sources.append({
+                RESOURCE_ROLE_FIELD: field,
+                RESOURCE_ID_FIELD: value,
+            })
+
 
         # delete that field
         del edge[field]
