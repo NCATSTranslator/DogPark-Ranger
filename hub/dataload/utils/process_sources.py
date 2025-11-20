@@ -59,6 +59,7 @@ def process_sources(edge):
         if isinstance(field_value, list):
             inforeses.update(field_value)
         elif isinstance(field_value, str):
+            inforeses.add(field_value)
             values = [field_value]
         else:
             raise TypeError(f"invalid type found in field: {field} in edge: {edge.id}")
