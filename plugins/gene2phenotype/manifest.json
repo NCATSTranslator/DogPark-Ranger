@@ -5,7 +5,7 @@
     ],
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/data_services/translator-ingests/kgx/ebi_gene2phenotype/latest/ebi_gene2phenotype.tar.xz"
+            "https://stars.renci.org/var/translator/releases/gene2phenotype/latest/gene2phenotype.tar.xz"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",

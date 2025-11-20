@@ -5,7 +5,7 @@
     ],
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/data_services/translator-ingests/kgx/diseases/latest/diseases.tar.xz"
+            "https://stars.renci.org/var/translator/releases/diseases/latest/diseases.tar.xz"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",

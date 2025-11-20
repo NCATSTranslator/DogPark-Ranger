@@ -3,7 +3,7 @@
     "requires": ["jsonlines"],
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/data_services/translator-ingests/kgx/hpoa/latest/hpoa.tar.xz"
+            "https://stars.renci.org/var/translator/releases/hpoa/latest/hpoa.tar.xz"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",

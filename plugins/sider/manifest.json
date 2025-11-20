@@ -5,7 +5,7 @@
     ],
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/data_services/translator-ingests/kgx/sider/latest/sider.tar.xz"
+            "https://stars.renci.org/var/translator/releases/sider/latest/sider.tar.xz"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",
