@@ -13,7 +13,7 @@
     },
     "uploaders": [
         {
-            "name": "ebi_gene2phenotype_nodes",
+            "name": "gene2phenotype_nodes",
             "parser": "hub.dataload.dingo_loader:parser",
             "parser_kwargs": {
                 "entity": "nodes"
@@ -22,7 +22,7 @@
             "mapping": "hub.dataload.mapping.dingo_mapping:nodes_mapping"
         },
         {
-            "name": "ebi_gene2phenotype_edges",
+            "name": "gene2phenotype_edges",
             "parser": "hub.dataload.dingo_loader:parser",
             "parser_kwargs": {
                 "entity": "edges"
