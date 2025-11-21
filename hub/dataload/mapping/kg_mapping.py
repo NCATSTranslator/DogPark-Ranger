@@ -34,7 +34,7 @@ def nodes_mapping(cls):
 
         ## fields below are attributes
         "information_content": default_half_float,
-        "description": default_simple_text,
+        "description": lowercase_text,
         "equivalent_identifiers": default_curie_keyword,
 
         # always starts with NCBITaxon:
@@ -151,7 +151,7 @@ def merged_edges_mapping(cls):
 
         ## fields below are attributes
         "information_content": default_half_float,
-        "description": default_simple_text,
+        "description": lowercase_text,
         "equivalent_identifiers": default_curie_keyword,
 
         # always starts with NCBITaxon:
