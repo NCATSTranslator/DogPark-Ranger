@@ -14,7 +14,7 @@
     "uploaders": [
         {
             "name": "go_cam_nodes",
-            "parser": "hub.dataload.dingo_loader:parser",
+            "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "nodes"
             },
@@ -23,7 +23,7 @@
         },
         {
             "name": "go_cam_edges",
-            "parser": "hub.dataload.dingo_loader:parser",
+            "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges"
             },
