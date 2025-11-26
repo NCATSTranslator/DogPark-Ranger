@@ -1,19 +1,24 @@
 def nodes_mapping(cls):
+    # Nodes mapping does not matter, because it's merged
+
+
     # def for indexed types
     default_simple_text = {"type": "text"}
-    lowercase_text = {
-        "type": "text",
-        "normalizer": "keyword_lowercase_normalizer"
-    }
+
 
     default_half_float = {"type": "half_float"}
 
-    default_keyword = {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}
+    default_keyword = {
+        "type": "keyword",
+        "normalizer": "keyword_lowercase_normalizer"
+    }
+
     default_curie_keyword = {
-        **lowercase_text,
-        "analyzer": "curie_analyzer",
+        **default_keyword,
         "fields": {
-            "keyword": {"type": "keyword"}
+            "parts": {
+                "type": "text",
+            }
         }
     }
 
@@ -34,7 +39,7 @@ def nodes_mapping(cls):
 
         ## fields below are attributes
         "information_content": default_half_float,
-        "description": lowercase_text,
+        "description": default_simple_text,
         "equivalent_identifiers": default_curie_keyword,
 
         # always starts with NCBITaxon:
@@ -43,6 +48,7 @@ def nodes_mapping(cls):
         # no record with these fields
         "provided_by": index_disabled_text,
         "inheritance": index_disabled_text,
+
     }
 
     return nodes_props
@@ -50,19 +56,35 @@ def nodes_mapping(cls):
 
 def merged_edges_mapping(cls):
     # def for indexed types
+    # def for indexed types
+
+    # under the hood, standard tokenizer stores lowercase by default
     default_simple_text = {"type": "text"}
-    lowercase_text = {
-        "type": "text",
+
+    default_half_float = {"type": "half_float"}
+
+    default_keyword = {
+        "type": "keyword",
         "normalizer": "keyword_lowercase_normalizer"
     }
 
-    default_half_float = {"type": "half_float"}
-    default_keyword = {"type": "keyword", "normalizer": "keyword_lowercase_normalizer"}
+    # default_curie_keyword = {
+    #     **default_simple_text,
+    #     "analyzer": "curie_analyzer",
+    #     "fields": {
+    #         "keyword": {
+    #             "type": "keyword",
+    #             "normalizer": "keyword_lowercase_normalizer"
+    #         }
+    #     }
+    # }
+
     default_curie_keyword = {
-        **lowercase_text,
-        "analyzer": "curie_analyzer",
+        **default_keyword,
         "fields": {
-            "keyword": {"type": "keyword"}
+            "parts": {
+                "type": "text",
+            }
         }
     }
 
@@ -151,7 +173,7 @@ def merged_edges_mapping(cls):
 
         ## fields below are attributes
         "information_content": default_half_float,
-        "description": lowercase_text,
+        "description": default_simple_text,
         "equivalent_identifiers": default_curie_keyword,
 
         # always starts with NCBITaxon:
