@@ -1,0 +1,35 @@
+{
+    "version": "0.2",
+    "requires": [
+        "jsonlines"
+    ],
+    "dumper": {
+        "data_url": [
+            "https://stars.renci.org/var/translator/releases/panther/latest/panther.tar.xz",
+            "https://stars.renci.org/var/translator/releases/panther/latest/graph-metadata.json"
+        ],
+        "uncompress": false,
+        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",
+        "schedule": "0 0 * * *"
+    },
+    "uploaders": [
+        {
+            "name": "panther_nodes",
+            "parser": "hub.dataload.dingo_loader:parser",
+            "parser_kwargs": {
+                "entity": "nodes"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.dingo_mapping:nodes_mapping"
+        },
+        {
+            "name": "panther_edges",
+            "parser": "hub.dataload.dingo_loader:parser",
+            "parser_kwargs": {
+                "entity": "edges"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.dingo_mapping:merged_edges_mapping"
+        }
+    ]
+}
