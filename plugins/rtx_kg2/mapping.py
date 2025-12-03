@@ -11,7 +11,7 @@ def merged_edges_mapping(cls):
             "predicate": default_keyword,
             "all_predicates": default_keyword,
             "primary_knowledge_source": default_keyword,
-            "publications": default_text,
+            "publications": default_keyword,
             "publications_info": {
                 "type": "object",
                 "enabled": False,
@@ -39,7 +39,7 @@ def merged_edges_mapping(cls):
         "id": default_keyword,
         "iri": {"type": "text", "index": False},
         "name": default_text,
-        "publications": default_text,
+        "publications": default_keyword,
     }
 
 
