@@ -20,7 +20,7 @@
                 "entity": "nodes"
             },
             "on_duplicates": "error",
-            "mapping": "hub.dataload.mapping.dingo_mapping:nodes_mapping"
+            "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
         },
         {
             "name": "alliance_edges",
@@ -29,7 +29,7 @@
                 "entity": "edges"
             },
             "on_duplicates": "error",
-            "mapping": "hub.dataload.mapping.dingo_mapping:merged_edges_mapping"
+            "mapping": "hub.dataload.mapping.kg_mapping:merged_edges_mapping"
         }
     ]
 }
