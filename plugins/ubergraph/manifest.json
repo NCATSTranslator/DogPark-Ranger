@@ -1,0 +1,34 @@
+{
+    "version": "0.2",
+    "requires": [
+        "jsonlines"
+    ],
+    "dumper": {
+        "data_url": [
+            "https://stars.renci.org/var/translator/releases/ubergraph/latest/ubergraph.tar.xz",
+            "https://stars.renci.org/var/translator/releases/ubergraph/latest/graph-metadata.json"
+        ],
+        "uncompress": false,
+        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"
+    },
+    "uploaders": [
+        {
+            "name": "ubergraph_nodes",
+            "parser": "hub.dataload.kg_loader:parser",
+            "parser_kwargs": {
+                "entity": "nodes"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
+        },
+        {
+            "name": "ubergraph_edges",
+            "parser": "hub.dataload.kg_loader:parser",
+            "parser_kwargs": {
+                "entity": "edges"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:merged_edges_mapping"
+        }
+    ]
+}
