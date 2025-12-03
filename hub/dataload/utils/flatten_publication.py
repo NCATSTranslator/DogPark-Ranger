@@ -9,7 +9,15 @@ def flatten_publications(data: dict) -> list:
 
     def extend_pub_info(pmid: str):
         pub_info = publications_info.get(pmid, None)
+
         if pub_info is not None:
+            # use underscore in pub_info field names
+            pub_info = {
+                (field.replace(" ", "_") if " " in field else field): value
+                for field, value in pub_info.items()
+            }
+
+
             pub_info[PMID_FIELD_NAME] = pmid
             return pub_info
 

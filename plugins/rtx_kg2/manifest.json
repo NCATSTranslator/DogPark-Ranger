@@ -3,8 +3,8 @@
     "requires": ["jsonlines"],
     "dumper": {
         "data_url": [
-            "http://su06:8080/dataupload/edges.jsonl",
-            "http://su06:8080/dataupload/nodes.jsonl"
+            "http://su06:8080/dataupload/edges.jsonl.gz",
+            "http://su06:8080/dataupload/nodes.jsonl.gz"
         ],
         "uncompress": false,
         "release": "version:get_release",
@@ -13,13 +13,13 @@
     "uploaders": [
         {
             "name" :"rtx_edges",
-            "parser": "hub.dataload.data_parsers:load_edges",
+            "parser": "hub.dataload.data_parsers:load_edges_with_processing",
             "on_duplicates": "merge",
             "mapping": "mapping:merged_edges_mapping"
       },
       {
             "name" : "rtx_nodes",
-            "parser": "hub.dataload.data_parsers:load_nodes",
+            "parser": "hub.dataload.data_parsers:load_nodes_with_processing",
             "on_duplicates": "merge",
             "mapping": "mapping:nodes_mapping"
       }

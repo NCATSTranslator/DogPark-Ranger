@@ -1,45 +1,16 @@
-import gzip
 import pathlib
 from collections import defaultdict
-from contextlib import contextmanager
 
 import jsonlines
 from typing import Union, Literal
 
+from hub.dataload.utils.file import buffered_yield, gz_open
 from hub.dataload.utils.flatten_publication import process_publications
 from hub.dataload.utils.process_category import process_category
 from hub.dataload.utils.process_predicate import process_predicate
 
 NODE_BUFFER_SIZE = 4096
 EDGE_BUFFER_SIZE = 2048
-
-@contextmanager
-def gz_open(path: Union[str, pathlib.Path]):
-    """Open a gzipped JSONL file with jsonlines.Reader."""
-    with gzip.open(path, "rt") as f:
-        reader = jsonlines.Reader(f)
-        try:
-            yield reader
-        finally:
-            reader.close()
-
-
-def buffered_yield(size: int):
-    """Wraps any generator to yield items in batches of `size`."""
-    def wrapper(generator_function):
-        def wrapped(*args, **kwargs):
-            buffer = []
-            for item in generator_function(*args, **kwargs):
-                buffer.append(item)
-                if len(buffer) == size:
-                    yield from buffer
-                    buffer = []
-
-            if len(buffer) > 0:
-                yield from buffer
-        return wrapped
-    return wrapper
-
 
 
 @buffered_yield(NODE_BUFFER_SIZE)
@@ -81,6 +52,24 @@ def load_nodes(data_folder: Union[str, pathlib.Path]):
     """ Stream node data from given JSONL file """
     yield from loader(data_folder, "nodes", gen_id=True)
 
+
+def load_edges_with_processing(data_folder: Union[str, pathlib.Path]):
+    """ Stream edge data from given JSONL file """
+    predicate_cache = {}
+    for edge in loader(data_folder, "edges", gen_id=True):
+        process_publications(edge)
+        process_predicate(edge, predicate_cache, "all_predicates")
+        yield edge
+
+
+
+def load_nodes_with_processing(data_folder: Union[str, pathlib.Path]):
+    """ Stream node data from given JSONL file """
+    category_cache = {}
+
+    for node in loader(data_folder, "nodes", gen_id=True):
+        process_category(node, category_cache)
+        yield node
 
 
 @buffered_yield(EDGE_BUFFER_SIZE)

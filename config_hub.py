@@ -74,6 +74,7 @@ INDEX_CONFIG = {
     "indexer_select": {
         # default
         # None : "path.to.special.Indexer",
+        None: "hub.dataindex.indexer.KGXIndexer"
     },
     "env": {
         "test": {
