@@ -15,7 +15,7 @@
     "uploaders": [
         {
             "name": "ttd_nodes",
-            "parser": "hub.dataload.dingo_loader:parser",
+            "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "nodes"
             },
@@ -24,7 +24,7 @@
         },
         {
             "name": "ttd_edges",
-            "parser": "hub.dataload.dingo_loader:parser",
+            "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges"
             },

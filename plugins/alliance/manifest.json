@@ -15,7 +15,7 @@
     "uploaders": [
         {
             "name": "alliance_nodes",
-            "parser": "hub.dataload.dingo_loader:parser",
+            "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "nodes"
             },
@@ -24,7 +24,7 @@
         },
         {
             "name": "alliance_edges",
-            "parser": "hub.dataload.dingo_loader:parser",
+            "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges"
             },
