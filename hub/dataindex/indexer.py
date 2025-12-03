@@ -105,6 +105,7 @@ class KGXIndexer(Indexer):
 
         # hard-coded for now to save time on builder creation
         self.es_index_settings['number_of_shards'] = 5
+        self.es_index_settings['number_of_replicas'] = 2
 
         # -----------info-----------
 
