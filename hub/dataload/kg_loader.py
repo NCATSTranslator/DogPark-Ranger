@@ -1,6 +1,6 @@
 from functools import partial
 
-from hub.dataload.compressed_parser import load_from_tar
+from hub.dataload.compressed_parser import load_from_tar, load_from_zst
 from hub.dataload.data_parsers import loader
 from hub.dataload.utils.pipeline import apply_processors
 from hub.dataload.utils.process_category import process_category_list
@@ -47,6 +47,23 @@ def parser_uncompressed(*args, **kwargs):
 
     yield from map(processor_pipeline, loader(*args, **kwargs))
 
+def parser_zst(*args, **kwargs):
+    entity = kwargs.get('entity')
+
+    if entity is None:
+        raise ValueError("No entity specified")
+
+    processor_pipeline = (
+        node_processor
+        if entity == "nodes"
+        else partial(edge_processor, {})  # initialize predicate look-up cache
+    )
+
+    # disable sequence generation by default
+    if entity == "nodes" and kwargs.get('gen_seq', None) is None:
+        kwargs['gen_seq'] = False
+
+    yield from map(processor_pipeline, load_from_zst(*args, **kwargs))
 
 def parser(*args, **kwargs):
     entity = kwargs.get('entity')

@@ -1,0 +1,33 @@
+{
+    "version": "0.2",
+    "requires": [
+        "jsonlines",
+        "zstandard"
+    ],
+    "dumper": {
+        "data_url": [
+          "http://su06:8080/dataupload/translator_kg.tar.zst"
+        ],
+        "uncompress": false
+    },
+    "uploaders": [
+        {
+            "name": "tier0_kg_gz_nodes",
+            "parser": "hub.dataload.kg_loader:parser_zst",
+            "parser_kwargs": {
+                "entity": "nodes"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
+        },
+        {
+            "name": "tier0_kg_gz_edges",
+            "parser": "hub.dataload.kg_loader:parser_zst",
+            "parser_kwargs": {
+                "entity": "edges"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:merged_edges_mapping"
+        }
+    ]
+}
