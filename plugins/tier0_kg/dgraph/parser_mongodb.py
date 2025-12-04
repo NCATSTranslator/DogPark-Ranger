@@ -181,7 +181,7 @@ def edge_to_dgraph(doc):
         "ecategory": doc.get("category", []),
         "subject": {"uid": f"_:{PREFIX_VERSION}_node_{sanitize_uid(doc['subject'])}"},
         "object": {"uid": f"_:{PREFIX_VERSION}_node_{sanitize_uid(doc['object'])}"},
-        "sources": [{"uid": f"_:{PREFIX_VERSION}_source_{sanitize_uid(s.get('resource_id'))}"} for s in doc.get("sources", []) if s.get('resource_id')],
+        "sources": [{"uid": f"_:{PREFIX_VERSION}_source_{sanitize_uid(doc.get('id'))}_{sanitize_uid(s.get('resource_id'))}"} for s in doc.get("sources", []) if s.get('resource_id')],
     }
     return clean(edge)
 
