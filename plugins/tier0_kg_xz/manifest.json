@@ -1,0 +1,32 @@
+{
+    "version": "0.2",
+    "requires": [
+        "jsonlines"
+    ],
+    "dumper": {
+        "data_url": [
+          "https://stars.renci.org/var/data_services/translator-ingests/kgx/translator_kg/latest/translator_kg.tar.xz"
+        ],
+        "uncompress": false
+    },
+    "uploaders": [
+        {
+            "name": "tier0_kg_gz_nodes",
+            "parser": "hub.dataload.kg_loader:parser",
+            "parser_kwargs": {
+                "entity": "nodes"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
+        },
+        {
+            "name": "tier0_kg_gz_edges",
+            "parser": "hub.dataload.kg_loader:parser",
+            "parser_kwargs": {
+                "entity": "edges"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:merged_edges_mapping"
+        }
+    ]
+}
