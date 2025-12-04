@@ -14,7 +14,7 @@ EDGE_BUFFER_SIZE = 2048
 
 
 @buffered_yield(NODE_BUFFER_SIZE)
-def read_jsonl(input_file: Union[str, pathlib.Path], gen_id=False):
+def read_jsonl(input_file: Union[str, pathlib.Path], gen_id=False, gen_seq=False, expect_id=False):
     """ Common reader to load data from jsonl files """
 
     gzip_file = input_file.with_name(input_file.name + ".gz")
@@ -29,18 +29,22 @@ def read_jsonl(input_file: Union[str, pathlib.Path], gen_id=False):
         index = 0
         for doc in source:
             if doc:
+                if expect_id and "id" not in doc:
+                    raise Exception(f"id is expected for {input_file}")
                 if gen_id:
                     doc["_id"] = str(doc["id"]) if "id" in doc else str(index)
+                if gen_seq and "seq_" not in doc:
+                    doc["seq_"] = index
                 index += 1
                 yield doc
 
 
 
-def loader(data_folder: Union[str, pathlib.Path], entity: Literal['edges', 'nodes'], gen_id=False):
+def loader(data_folder: Union[str, pathlib.Path], entity: Literal['edges', 'nodes'], gen_id=False, gen_seq=False, expect_id=False):
     """ Meta loader to stream edge data from given JSONL file """
     data_folder = pathlib.Path(data_folder).resolve().absolute()
-    edge_file = data_folder.joinpath(f"{entity}.jsonl")
-    yield from read_jsonl(edge_file, gen_id)
+    file = data_folder.joinpath(f"{entity}.jsonl")
+    yield from read_jsonl(file, gen_id, gen_seq, expect_id)
 
 
 def load_edges(data_folder: Union[str, pathlib.Path]):
