@@ -34,13 +34,13 @@ def create_versioned_schema(schema_path, version_prefix):
         in_type_def = False
         current_type = None
         schema_metadata_section = False
-        
+
         for line in infile:
             if "# SchemaMetadata" in line:
                 schema_metadata_section = True
                 outfile.write(line)
                 continue
-                
+
             if schema_metadata_section:
                 if line.strip() == "" or (line.strip().startswith("#") and "# SchemaMetadata" not in line):
                     schema_metadata_section = False
@@ -50,7 +50,7 @@ def create_versioned_schema(schema_path, version_prefix):
             if line.strip().startswith('#') or not line.strip():
                 outfile.write(line)
                 continue
-                
+
             type_match = re.match(r'type\s+(\w+)\s*\{', line)
             if type_match:
                 in_type_def = True
@@ -60,13 +60,13 @@ def create_versioned_schema(schema_path, version_prefix):
                     continue
                 outfile.write(f"type {version_prefix}_{current_type} {{\n")
                 continue
-            
+
             if in_type_def and '}' in line:
                 in_type_def = False
                 current_type = None
                 outfile.write(line)
                 continue
-            
+
             if in_type_def:
                 if current_type == "SchemaMetadata":
                     outfile.write(line)
@@ -81,7 +81,7 @@ def create_versioned_schema(schema_path, version_prefix):
                 else:
                     outfile.write(line)
                 continue
-            
+
             pred_match = re.match(r'(\w+)(\s*:.*)', line)
             if pred_match:
                 predicate = pred_match.group(1)
@@ -91,9 +91,9 @@ def create_versioned_schema(schema_path, version_prefix):
                     continue
                 outfile.write(f"{version_prefix}_{predicate}{rest}\n")
                 continue
-            
+
             outfile.write(line)
-    
+
     return versioned_schema_path
 
 # --------------------------
@@ -137,10 +137,10 @@ def node_to_dgraph(doc):
     return clean(node)
 
 
-def source_to_dgraph(doc):
+def source_to_dgraph(doc, edge_id):
     src = {
         "dgraph.type": f"{PREFIX_VERSION}_Source",
-        "uid": f"_:{PREFIX_VERSION}_source_{sanitize_uid(doc['resource_id'])}",
+        "uid": f"_:{PREFIX_VERSION}_source_{sanitize_uid(edge_id)}_{sanitize_uid(doc['resource_id'])}",
         "resource_id": doc.get("resource_id"),
         "resource_role": doc.get("resource_role"),
         "upstream_resource_ids": doc.get("upstream_resource_ids", []),
@@ -212,8 +212,9 @@ def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn, out_file)
             break
 
         # Emit each embedded source as its own object
+        edge_id = doc.get('id')
         for src in doc.get("sources", []):
-            src_item = source_fn(src)
+            src_item = source_fn(src, edge_id)
             if not first:
                 out_file.write(",\n")
             out_file.write(json.dumps(src_item))

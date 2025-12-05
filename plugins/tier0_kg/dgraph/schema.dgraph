@@ -35,7 +35,7 @@ has_count: float .
 has_total: float .
 has_percentage: float .
 has_quotient: float .
-eid: string .
+eid: string @index(exact) .
 ecategory: [string] .
 
 # Relationship between nodes and edges
