@@ -1,32 +1,37 @@
 {
     "version": "0.2",
-    "requires": ["jsonlines"],
+    "requires": [
+        "jsonlines"
+    ],
+    "__metadata__": {
+        "graph": "https://stars.renci.org/var/translator/releases/hpoa/latest/graph-metadata.json",
+        "release": "https://stars.renci.org/var/translator/releases/hpoa/release-metadata.json"
+    },
     "dumper": {
         "data_url": [
             "https://stars.renci.org/var/translator/releases/hpoa/latest/hpoa.tar.xz"
         ],
         "uncompress": false,
-        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",
-        "schedule": "0 0 * * *"
+        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"
     },
     "uploaders": [
-      {
-            "name" : "hpoa_nodes",
+        {
+            "name": "hpoa_nodes",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "nodes"
             },
             "on_duplicates": "error",
             "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
-      },
-      {
-            "name" : "hpoa_edges",
+        },
+        {
+            "name": "hpoa_edges",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges"
             },
             "on_duplicates": "error",
             "mapping": "hub.dataload.mapping.kg_mapping:merged_edges_mapping"
-      }
+        }
     ]
 }
