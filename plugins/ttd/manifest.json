@@ -3,14 +3,16 @@
     "requires": [
         "jsonlines"
     ],
+    "__metadata__": {
+        "graph": "https://stars.renci.org/var/translator/releases/ttd/latest/graph-metadata.json",
+        "release": "https://stars.renci.org/var/translator/releases/ttd/release-metadata.json"
+    },
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/translator/releases/ttd/latest/ttd.tar.xz",
-            "https://stars.renci.org/var/translator/releases/ttd/latest/graph-metadata.json"
+            "https://stars.renci.org/var/translator/releases/ttd/latest/ttd.tar.xz"
         ],
         "uncompress": false,
-        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",
-        "schedule": "0 0 * * *"
+        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"
     },
     "uploaders": [
         {

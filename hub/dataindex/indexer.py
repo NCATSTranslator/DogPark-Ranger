@@ -1,10 +1,12 @@
 import asyncio
+import json
 from copy import deepcopy
 from datetime import datetime
 from functools import partial
 from types import SimpleNamespace
 from typing import Callable
 
+import requests
 from biothings.hub.dataindex.indexer import Indexer, _BuildBackend, _BuildDoc, ProcessInfo
 from biothings.hub.dataindex.indexer_payload import IndexSettings, IndexMappings, DEFAULT_INDEX_SETTINGS, \
     DEFAULT_INDEX_MAPPINGS
@@ -51,7 +53,7 @@ class KGXIndexer(Indexer):
 
         super().__init__(build_doc, indexer_env, index_name)
 
-        print("using KGXIndexer")
+        self.logger.info("using KGXIndexer")
 
         _build_doc = _BuildDoc(build_doc)
 
@@ -64,10 +66,10 @@ class KGXIndexer(Indexer):
 
 
         # mongodb node client metadata
-        # Need to acquire the RTXKG2 nodes collection from mongodb
-        col_name = edge_build.col.replace("_edges", "")
+        # Need to acquire the KG nodes collection from mongodb
+        data_name = edge_build.col.replace("_edges", "")
 
-        node_build = self._build_node_backend_client(_build_doc, col_name)
+        node_build = self._build_node_backend_client(_build_doc, data_name)
         self.mongo_node_client_args = node_build.args
         self.mongo_node_database_name = node_build.dbs
         self.mongo_node_collection_name = node_build.col
@@ -102,6 +104,9 @@ class KGXIndexer(Indexer):
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
 
+        # inject
+        self._inject_meta(_build_doc, data_name)
+
 
         # hard-coded for now to save time on builder creation
         self.es_index_settings['number_of_shards'] = 5
@@ -115,6 +120,32 @@ class KGXIndexer(Indexer):
 
         self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
+
+
+    def _inject_meta(self, build_doc:_BuildDoc, data_name:str):
+        meta_src = build_doc['_meta']["src"][data_name]
+
+        try:
+            graph_loc = meta_src["graph"]
+            release_loc = meta_src["release"]
+            graph_metadata = requests.get(graph_loc).json()
+            release_metadata = requests.get(release_loc).json()
+
+            # injection
+            self.es_index_mappings["_meta"] = {
+                "graph": graph_metadata,
+                "release": release_metadata,
+            }
+
+
+        except KeyError as e:
+            self.logger.info(f"Can't locate metadata file: {e}. Injection bypassed.")
+        except requests.exceptions.RequestException as e:
+            self.logger.info(f"Error getting remote metadata: {e}. Injection bypassed.")
+        except json.JSONDecodeError as e:
+            self.logger.info(f"Error parsing remote metadata {e}. Injection bypassed.")
+
+
 
     def _build_node_backend_client(self, build_doc: _BuildDoc, col_name:str) -> _BuildBackend:
         """

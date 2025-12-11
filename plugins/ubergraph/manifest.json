@@ -3,10 +3,13 @@
     "requires": [
         "jsonlines"
     ],
+    "__metadata__": {
+        "graph": "https://stars.renci.org/var/translator/releases/ubergraph/latest/graph-metadata.json",
+        "release": "https://stars.renci.org/var/translator/releases/ubergraph/release-metadata.json"
+    },
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/translator/releases/ubergraph/latest/ubergraph.tar.xz",
-            "https://stars.renci.org/var/translator/releases/ubergraph/latest/graph-metadata.json"
+            "https://stars.renci.org/var/translator/releases/ubergraph/latest/ubergraph.tar.xz"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"

@@ -3,6 +3,10 @@
     "requires": [
         "jsonlines"
     ],
+    "__metadata__": {
+        "graph": "https://stars.renci.org/var/translator/releases/gene2phenotype/latest/graph-metadata.json",
+        "release": "https://stars.renci.org/var/translator/releases/gene2phenotype/release-metadata.json"
+    },
     "dumper": {
         "data_url": [
             "https://stars.renci.org/var/translator/releases/gene2phenotype/latest/gene2phenotype.tar.xz"
