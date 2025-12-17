@@ -12,8 +12,7 @@
             "https://stars.renci.org/var/translator/releases/gene2phenotype/latest/gene2phenotype.tar.zst"
         ],
         "uncompress": false,
-        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs",
-        "schedule": "0 0 * * *"
+        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"
     },
     "uploaders": [
         {

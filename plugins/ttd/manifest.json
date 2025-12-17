@@ -5,11 +5,11 @@
     ],
     "__metadata__": {
         "graph": "https://stars.renci.org/var/translator/releases/ttd/latest/graph-metadata.json",
-        "release": "https://stars.renci.org/var/translator/releases/ttd/release-metadata.json"
+        "release": "https://stars.renci.org/var/translator/releases/ttd/latest-release.json"
     },
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/translator/releases/ttd/latest/ttd.tar.xz"
+            "https://stars.renci.org/var/translator/releases/ttd/latest/ttd.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"
