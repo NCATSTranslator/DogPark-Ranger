@@ -18,15 +18,19 @@ def process_qualifiers(edge):
 
     for field in list(edge.keys()):
         if biolink.is_qualifier(field):
-            if type(edge[field]) is not str:
-                raise TypeError("entry of an qualifier value must be a string. Edge:", edge)
+            field_value = edge[field]
+
+            if type(field_value) is str or type(field_value) is list:
+                field_value = remove_biolink_prefix(field_value)
+            else:
+                raise TypeError("entry of an qualifier value must be a string or a list of string. Edge:", edge, "field:", field)
 
             field_stripped: str = remove_biolink_prefix(field)
             if field_stripped != field:
                 # remove old field, shouldn't need to though
                 edge.pop(field)
 
-            edge[field_stripped] = remove_biolink_prefix(edge[field])
+            edge[field_stripped] = field_value
 
 
     return edge
