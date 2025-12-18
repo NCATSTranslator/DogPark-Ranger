@@ -3,6 +3,8 @@ import os
 import json
 import re
 import argparse
+import base64
+import msgpack
 from pymongo import MongoClient
 from mongomock import MongoClient as MockMongoClient
 from typing import Dict, List, Tuple
@@ -133,6 +135,17 @@ def node_to_dgraph(doc):
         "provided_by": doc.get("provided_by", []),
         "description": doc.get("description"),
         "equivalent_identifiers": doc.get("equivalent_identifiers", []),
+
+        "full_name": doc.get("full_name"),
+        "symbol": doc.get("symbol"),
+        "synonym": doc.get("synonym", []),
+        "xref": doc.get("xref", []),
+        "taxon": doc.get("taxon"),
+
+        "chembl_availability_type": doc.get("chembl_availability_type"),
+        "chembl_black_box_warning": doc.get("chembl_black_box_warning"),
+        "chembl_natural_product": doc.get("chembl_natural_product"),
+        "chembl_prodrug": doc.get("chembl_prodrug"),
     }
     return clean(node)
 
@@ -171,17 +184,38 @@ def edge_to_dgraph(doc):
         "allelic_requirement": doc.get("allelic_requirement"),
         "update_date": doc.get("update_date"),
         "z_score": doc.get("z_score"),
+        "p_value": doc.get("p_value"),
+        "adjusted_p_value": doc.get("adjusted_p_value"),
         "has_evidence": doc.get("has_evidence", []),
         "has_confidence_score": doc.get("has_confidence_score"),
         "has_count": doc.get("has_count"),
         "has_total": doc.get("has_total"),
         "has_percentage": doc.get("has_percentage"),
         "has_quotient": doc.get("has_quotient"),
+        "number_of_cases": doc.get("number_of_cases"),
+        "dgidb_evidence_score": doc.get("dgidb_evidence_score"),
+        "dgidb_interaction_score": doc.get("dgidb_interaction_score"),
         "eid": doc.get("id"),
         "ecategory": doc.get("category", []),
+
+        "anatomical_context_qualifier": doc.get("anatomical_context_qualifier", []),
+        "causal_mechanism_qualifier": doc.get("causal_mechanism_qualifier"),
+        "species_context_qualifier": doc.get("species_context_qualifier"),
+        "object_aspect_qualifier": doc.get("object_aspect_qualifier"),
+        "object_direction_qualifier": doc.get("object_direction_qualifier"),
+        "subject_aspect_qualifier": doc.get("subject_aspect_qualifier"),
+        "subject_direction_qualifier": doc.get("subject_direction_qualifier"),
+        "qualifiers": doc.get("qualifiers", []),
+
+        "FDA_regulatory_approvals": doc.get("FDA_regulatory_approvals", []),
+        "clinical_approval_status": doc.get("clinical_approval_status"),
+        "max_research_phase": doc.get("max_research_phase"),
+
         "subject": {"uid": f"_:{PREFIX_VERSION}_node_{sanitize_uid(doc['subject'])}"},
         "object": {"uid": f"_:{PREFIX_VERSION}_node_{sanitize_uid(doc['object'])}"},
         "sources": [{"uid": f"_:{PREFIX_VERSION}_source_{sanitize_uid(doc.get('id'))}_{sanitize_uid(s.get('resource_id'))}"} for s in doc.get("sources", []) if s.get('resource_id')],
+
+        "has_supporting_studies": (base64.b64encode(msgpack.packb(doc.get("has_supporting_studies"), use_bin_type=True)).decode("ascii") if doc.get("has_supporting_studies") is not None else None),
     }
     return clean(edge)
 
@@ -235,7 +269,7 @@ def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn, out_file)
 def load_mock_data(db, nodes_file, edges_file):
     """Loads data from JSONL files into the mock MongoDB."""
     print(f"Loading mock data from {nodes_file} and {edges_file}", file=sys.stderr)
-    
+
     # Load nodes
     nodes_collection = db[NODES_COLLECTION]
     with open(nodes_file, 'r') as f:
@@ -257,11 +291,11 @@ def load_mock_data(db, nodes_file, edges_file):
 def main():
     # --- Argument Parser for mock data ---
     parser = argparse.ArgumentParser(description="Stream data from MongoDB to Dgraph JSON format.")
-    
+
     # Mock data arguments
     parser.add_argument('--mock', nargs=2, metavar=('NODES_FILE', 'EDGES_FILE'),
                         help='Use mock data from specified JSONL files instead of a live MongoDB connection.')
-    
+
     # Configuration arguments
     parser.add_argument('--mongo_uri', default="mongodb://localhost:27017", help='MongoDB connection URI.')
     parser.add_argument('--db_name', default="db_name", help='MongoDB database name.')
@@ -285,7 +319,6 @@ def main():
     MAX_ITEMS = args.max_items if args.max_items else None
     PREFIX_VERSION = args.prefix_version
     SCHEMA_PATH = args.schema_path
-
 
     # --- Create versioned schema first ---
     create_versioned_schema(SCHEMA_PATH, PREFIX_VERSION)
