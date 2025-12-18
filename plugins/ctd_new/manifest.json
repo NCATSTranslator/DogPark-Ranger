@@ -16,7 +16,7 @@
     },
     "uploaders": [
         {
-            "name": "ctd_nodes",
+            "name": "ctd_new_nodes",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "nodes"
@@ -25,7 +25,7 @@
             "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
         },
         {
-            "name": "ctd_edges",
+            "name": "ctd_new_edges",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges"
