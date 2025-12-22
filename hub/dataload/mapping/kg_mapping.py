@@ -22,6 +22,8 @@ def nodes_mapping(cls):
         }
     }
 
+    default_bool = {"type": "boolean"}
+
     # def for not indexed types
     index_disabled_text = {
         **default_simple_text,
@@ -48,6 +50,19 @@ def nodes_mapping(cls):
         # no record with these fields
         "provided_by": index_disabled_text,
         "inheritance": index_disabled_text,
+
+        "taxon": default_curie_keyword,
+        "symbol": default_keyword,
+        "full_name": default_keyword,
+        "xref": default_curie_keyword,
+        "synonym": default_curie_keyword,
+        "chembl_natural_product": default_bool,
+        "chembl_availability_type": default_simple_text,
+
+        # all equals true
+        # chembl_black_box_warning needs processing
+        "chembl_black_box_warning": default_bool,
+        "chembl_prodrug": default_bool,
 
     }
 
@@ -89,6 +104,8 @@ def merged_edges_mapping(cls):
     }
 
     default_integer = {"type": "integer"}
+
+    default_bool = {"type": "boolean"}
 
     # def for not indexed types
     index_disabled_text = {
@@ -132,6 +149,15 @@ def merged_edges_mapping(cls):
         "sex_qualifier": default_keyword,
 
 
+        "object_aspect_qualifier": default_keyword,
+        "object_direction_qualifier": default_keyword,
+        "species_context_qualifier": default_keyword,
+        "causal_mechanism_qualifier": default_keyword,
+        "anatomical_context_qualifier": default_keyword,
+        "object_form_or_variant_qualifier": default_keyword,
+        "subject_aspect_qualifier": default_keyword,
+        "subject_direction_qualifier": default_keyword,
+
 
         ## fields below are attributes
         "knowledge_level": default_keyword,
@@ -158,6 +184,25 @@ def merged_edges_mapping(cls):
         "has_quotient": default_half_float,
         "has_total": default_integer,
 
+        "p_value": default_half_float,
+        "adjusted_p_value": default_half_float,
+        # special
+        "has_supporting_studies": index_disabled_object,
+        "max_research_phase": default_keyword,
+
+        # unknown
+        # "aggregator_knowledge_source": 111394,
+        "qualifiers": default_curie_keyword,
+        "clinical_approval_status": default_simple_text,
+        "number_of_cases": default_integer,
+        "dgidb_interaction_score": default_half_float,
+        "dgidb_evidence_score": default_half_float,
+        "description": default_simple_text,
+        "subject_feature_name": default_keyword,
+        "object_feature_name": default_keyword,
+        "FDA_regulatory_approvals": default_keyword,
+
+
         # internal control id, for sorting in ES
         "seq_": default_integer
     }
@@ -178,6 +223,19 @@ def merged_edges_mapping(cls):
 
         # always starts with NCBITaxon:
         "in_taxon": default_curie_keyword,
+
+        "taxon": default_curie_keyword,
+        "symbol": default_keyword,
+        "full_name": default_keyword,
+        "xref": default_curie_keyword,
+        "synonym": default_curie_keyword,
+        "chembl_natural_product": default_bool,
+        "chembl_availability_type": default_simple_text,
+
+        # all equals true
+        # chembl_black_box_warning needs processing
+        "chembl_black_box_warning": default_bool,
+        "chembl_prodrug": default_bool,
 
         # no record with these fields
         "provided_by": index_disabled_text,
