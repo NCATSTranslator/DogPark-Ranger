@@ -5,11 +5,11 @@
     ],
     "__metadata__": {
         "graph": "https://stars.renci.org/var/translator/releases/alliance/latest/graph-metadata.json",
-        "release": "https://stars.renci.org/var/translator/releases/alliance/release-metadata.json"
+        "release": "https://stars.renci.org/var/translator/releases/alliance/latest-release.json"
     },
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/translator/releases/alliance/latest/alliance.tar.xz"
+            "https://stars.renci.org/var/translator/releases/alliance/latest/alliance.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"

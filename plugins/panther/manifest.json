@@ -5,11 +5,11 @@
     ],
     "__metadata__": {
         "graph": "https://stars.renci.org/var/translator/releases/panther/latest/graph-metadata.json",
-        "release": "https://stars.renci.org/var/translator/releases/panther/release-metadata.json"
+        "release": "https://stars.renci.org/var/translator/releases/panther/latest-release.json"
     },
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/translator/releases/panther/latest/panther.tar.xz"
+            "https://stars.renci.org/var/translator/releases/panther/latest/panther.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"

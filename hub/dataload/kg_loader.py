@@ -3,6 +3,7 @@ from functools import partial
 from hub.dataload.compressed_parser import load_from_tar
 from hub.dataload.utils.pipeline import apply_processors
 from hub.dataload.utils.process_category import process_category_list
+from hub.dataload.utils.process_node_fields import process_chembl_black_box_warning
 from hub.dataload.utils.process_predicate import process_predicate
 from hub.dataload.utils.process_qualifiers import process_qualifiers
 from hub.dataload.utils.process_sources import process_sources
@@ -10,6 +11,7 @@ from hub.dataload.utils.process_sources import process_sources
 
 def node_processor(node):
     processors = [
+        process_chembl_black_box_warning,
         process_category_list
     ]
     return apply_processors(processors, node)

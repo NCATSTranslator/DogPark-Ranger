@@ -4,19 +4,19 @@
         "jsonlines"
     ],
     "__metadata__": {
-        "graph": "https://stars.renci.org/var/translator/releases/sider/latest/graph-metadata.json",
-        "release": "https://stars.renci.org/var/translator/releases/sider/latest-release.json"
+        "graph": "https://stars.renci.org/var/translator/releases/bgee/latest/graph-metadata.json",
+        "release": "https://stars.renci.org/var/translator/releases/bgee/latest-release.json"
     },
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/translator/releases/sider/latest/sider.tar.zst"
+            "https://stars.renci.org/var/translator/releases/bgee/latest/bgee.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"
     },
     "uploaders": [
         {
-            "name": "sider_nodes",
+            "name": "bgee_nodes",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "nodes"
@@ -25,7 +25,7 @@
             "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
         },
         {
-            "name": "sider_edges",
+            "name": "bgee_edges",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges"
