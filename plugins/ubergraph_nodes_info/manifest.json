@@ -1,0 +1,24 @@
+{
+    "version": "0.2",
+    "requires": [
+        "jsonlines"
+    ],
+    "dumper": {
+        "data_url": [
+            "https://stars.renci.org/var/translator/releases/ubergraph/latest/ubergraph.tar.zst"
+        ],
+        "uncompress": false,
+        "release": "hub.dataload.metadata_parser:get_release_for_renci_kgs"
+    },
+    "uploaders": [
+        {
+            "name": "ubergraph_nodes_mapping",
+            "parser": "hub.dataload.kg_loader:flat_parser",
+            "parser_kwargs": {
+                "result_key": "nodes",
+                "adj_list_key": "mapping"
+            },
+            "on_duplicates": "error"
+        }
+    ]
+}
