@@ -73,21 +73,20 @@ def node_info_parser(*args, **kwargs):
     edge_iterator = parser(*args, **edge_kwargs)
     adj_list = get_adj_list(edge_iterator)
     node_iterator = parser(*args, **node_kwargs)
-    nodes = to_key_value_pair(node_iterator)
+    nodes = dict(to_key_value_pair(node_iterator))
 
-    # todo encapsule one unified object
-    nodes_b = encapsule(nodes)
-    adj_list_b = encapsule(adj_list)
+    encapsuled = encapsule({
+        result_key: nodes,
+        adj_list_key: adj_list,
+    })
 
 
-    node_chunks = 10 ** 3
-    adj_list_chunks = 10 ** 3
+    chunks = 10 ** 3
 
     payload = []
 
-    node_chunks = split_n_chunks(nodes_b, node_chunks, result_key)
+    node_chunks = split_n_chunks(encapsuled, chunks)
     payload.extend(node_chunks)
-    payload.extend(split_n_chunks(adj_list_b, adj_list_chunks, adj_list_key, len(node_chunks)))
 
     return payload
 

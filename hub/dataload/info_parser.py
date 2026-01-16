@@ -34,7 +34,7 @@ def encapsule(payload: list | dict) -> str:
     return base64_payload
 
 
-def split_n_chunks(b64: str, n: int, key: str, offset = 0) -> list:
+def split_n_chunks(b64: str, n: int) -> list:
     if n <= 0:
         raise ValueError("n must be > 0")
 
@@ -43,8 +43,7 @@ def split_n_chunks(b64: str, n: int, key: str, offset = 0) -> list:
 
     return [
         {
-            "_id": str(offset + i),
-            "key": key,
+            "_id": str(i),
             "chunk_index": i,
             "value": b64[i : i + chunk_size]
         } for i in range(0, length, chunk_size)
@@ -52,5 +51,5 @@ def split_n_chunks(b64: str, n: int, key: str, offset = 0) -> list:
 
 def to_key_value_pair(nodes: Iterable[dict]):
     for node in nodes:
-        _id = node.pop("_id")
+        _id = node.pop("id")
         yield _id, node
