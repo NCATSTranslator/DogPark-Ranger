@@ -13,7 +13,7 @@
     "uploaders": [
         {
             "name": "ubergraph_nodes_mapping",
-            "parser": "hub.dataload.kg_loader:flat_parser",
+            "parser": "hub.dataload.kg_loader:node_info_parser",
             "parser_kwargs": {
                 "result_key": "nodes",
                 "adj_list_key": "mapping"
