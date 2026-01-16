@@ -2,7 +2,7 @@ import base64
 import math
 import zlib
 from collections import defaultdict
-from typing import Iterable
+from typing import Iterable, Any
 
 import msgpack
 
@@ -49,3 +49,8 @@ def split_n_chunks(b64: str, n: int, key: str, offset = 0) -> list:
             "value": b64[i : i + chunk_size]
         } for i in range(0, length, chunk_size)
     ]
+
+def to_key_value_pair(nodes: Iterable[dict]):
+    for node in nodes:
+        _id = node.pop("_id")
+        yield _id, node

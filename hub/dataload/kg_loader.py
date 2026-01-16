@@ -1,7 +1,7 @@
 from functools import partial
 
 from hub.dataload.compressed_parser import load_from_tar
-from hub.dataload.info_parser import get_adj_list, encapsule, split_n_chunks
+from hub.dataload.info_parser import get_adj_list, encapsule, split_n_chunks, to_key_value_pair
 from hub.dataload.utils.pipeline import apply_processors
 from hub.dataload.utils.process_category import process_category_list
 from hub.dataload.utils.process_node_fields import process_chembl_black_box_warning
@@ -72,7 +72,8 @@ def node_info_parser(*args, **kwargs):
 
     edge_iterator = parser(*args, **edge_kwargs)
     adj_list = get_adj_list(edge_iterator)
-    nodes = list(parser(*args, **node_kwargs))
+    node_iterator = parser(*args, **node_kwargs)
+    nodes = to_key_value_pair(node_iterator)
 
     # todo encapsule one unified object
     nodes_b = encapsule(nodes)
