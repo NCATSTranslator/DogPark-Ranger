@@ -12,13 +12,14 @@
     },
     "uploaders": [
         {
-            "name": "ubergraph_nodes_mapping",
+            "name": "ubergraph_nodes_info",
             "parser": "hub.dataload.kg_loader:node_info_parser",
             "parser_kwargs": {
                 "result_key": "nodes",
                 "adj_list_key": "mapping"
             },
-            "on_duplicates": "error"
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.info_mapping:info_mapping"
         }
     ]
 }
