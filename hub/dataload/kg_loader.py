@@ -81,7 +81,7 @@ def node_info_parser(*args, **kwargs):
     })
 
 
-    chunks = 10 ** 3
+    chunks = (10 ** 3) * 5
 
     payload = []
 
