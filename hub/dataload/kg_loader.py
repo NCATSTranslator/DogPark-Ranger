@@ -73,10 +73,9 @@ def node_info_parser(*args, **kwargs):
     edge_iterator = parser(*args, **edge_kwargs)
     adj_list = get_adj_list(edge_iterator)
     node_iterator = parser(*args, **node_kwargs)
-    nodes = dict(to_key_value_pair(node_iterator))
+    # nodes = dict(to_key_value_pair(node_iterator))
 
     encapsuled = encapsule({
-        result_key: nodes,
         adj_list_key: adj_list,
     })
 
