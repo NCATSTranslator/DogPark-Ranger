@@ -175,11 +175,13 @@ type Source {
 
 # SchemaMetadata
 schema_metadata_version: string @index(exact) .
+schema_metadata_namespace: string @index(exact) .
 schema_metadata_is_active: bool @index(bool) .
 schema_metadata_mapping: string .
 
 type SchemaMetadata {
     schema_metadata_version
+    schema_metadata_namespace
     schema_metadata_is_active
     schema_metadata_mapping
 }
