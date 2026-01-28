@@ -5,6 +5,7 @@ import re
 import argparse
 import base64
 import msgpack
+import hashlib
 from pymongo import MongoClient
 from mongomock import MongoClient as MockMongoClient
 from typing import Dict, List, Tuple
@@ -107,6 +108,46 @@ def sanitize_uid(uid):
     return re.sub(r'[^A-Za-z0-9_]', '_', str(uid))
 
 
+def compute_hex_uid(kind: str, version_prefix: str, identifier: str, salt: str = "") -> str:
+    """
+    Deterministically compute a unique Dgraph UID in hex format (0x...).
+
+    - Uses blake2b 64-bit digest of a stable composite key: version|kind|identifier|salt
+    - Forces the high bit set to avoid very small IDs potentially reserved elsewhere
+    - Returns a string like "0x1f2a3b4c..."
+
+    NOTE: Ensure the composite key uniquely identifies the entity across your dataset.
+    """
+    key = f"{version_prefix}|{kind}|{identifier}|{salt}".encode("utf-8")
+    h = hashlib.blake2b(key, digest_size=8)
+    val = int.from_bytes(h.digest(), "big") | (1 << 63)
+    return f"0x{val:x}"
+
+
+# --------------------------
+# UID HELPERS
+# --------------------------
+UID_MODE = "hex"  # default, overridden by CLI
+
+
+def uid_node(identifier: str) -> str:
+    if UID_MODE == "hex":
+        return compute_hex_uid("Node", PREFIX_VERSION, str(identifier))
+    return f"_:{PREFIX_VERSION}_node_{sanitize_uid(identifier)}"
+
+
+def uid_edge(identifier: str) -> str:
+    if UID_MODE == "hex":
+        return compute_hex_uid("Edge", PREFIX_VERSION, str(identifier))
+    return f"_:{PREFIX_VERSION}_edge_{sanitize_uid(identifier)}"
+
+
+def uid_source(edge_id: str, resource_id: str) -> str:
+    if UID_MODE == "hex":
+        return compute_hex_uid("Source", PREFIX_VERSION, f"{edge_id}|{resource_id}")
+    return f"_:{PREFIX_VERSION}_source_{sanitize_uid(edge_id)}_{sanitize_uid(resource_id)}"
+
+
 def clean(d):
     """Remove None, NaN, empty lists, empty strings recursively and prefix field names"""
     if isinstance(d, dict):
@@ -125,7 +166,7 @@ def clean(d):
 def node_to_dgraph(doc):
     node = {
         "dgraph.type": f"{PREFIX_VERSION}_Node",
-        "uid": f"_:{PREFIX_VERSION}_node_{sanitize_uid(doc['id'])}",
+        "uid": uid_node(str(doc.get("id"))),
         "id": doc.get("id"),
         "name": doc.get("name"),
         "in_taxon": doc.get("in_taxon", []),
@@ -153,7 +194,7 @@ def node_to_dgraph(doc):
 def source_to_dgraph(doc, edge_id):
     src = {
         "dgraph.type": f"{PREFIX_VERSION}_Source",
-        "uid": f"_:{PREFIX_VERSION}_source_{sanitize_uid(edge_id)}_{sanitize_uid(doc['resource_id'])}",
+        "uid": uid_source(str(edge_id), str(doc.get('resource_id'))),
         "resource_id": doc.get("resource_id"),
         "resource_role": doc.get("resource_role"),
         "upstream_resource_ids": doc.get("upstream_resource_ids", []),
@@ -165,7 +206,7 @@ def source_to_dgraph(doc, edge_id):
 def edge_to_dgraph(doc):
     edge = {
         "dgraph.type": f"{PREFIX_VERSION}_Edge",
-        "uid": f"_:{PREFIX_VERSION}_edge_{sanitize_uid(doc['id'])}",
+        "uid": uid_edge(str(doc.get("id"))),
         "predicate": doc.get("predicate"),
         "predicate_ancestors": doc.get("predicate_ancestors", []),
         "agent_type": doc.get("agent_type"),
@@ -211,13 +252,113 @@ def edge_to_dgraph(doc):
         "clinical_approval_status": doc.get("clinical_approval_status"),
         "max_research_phase": doc.get("max_research_phase"),
 
-        "subject": {"uid": f"_:{PREFIX_VERSION}_node_{sanitize_uid(doc['subject'])}"},
-        "object": {"uid": f"_:{PREFIX_VERSION}_node_{sanitize_uid(doc['object'])}"},
-        "sources": [{"uid": f"_:{PREFIX_VERSION}_source_{sanitize_uid(doc.get('id'))}_{sanitize_uid(s.get('resource_id'))}"} for s in doc.get("sources", []) if s.get('resource_id')],
+        "subject": {"uid": uid_node(str(doc.get("subject")))},
+        "object": {"uid": uid_node(str(doc.get("object")))},
+        "sources": [{"uid": uid_source(str(doc.get('id')), str(s.get('resource_id')))} for s in doc.get("sources", []) if s.get('resource_id')],
 
         "has_supporting_studies": (base64.b64encode(msgpack.packb(doc.get("has_supporting_studies"), use_bin_type=True)).decode("ascii") if doc.get("has_supporting_studies") is not None else None),
     }
     return clean(edge)
+
+
+# --------------------------
+# RDF (N-Quads) EMISSION
+# --------------------------
+
+def _format_uid_token(uid: str) -> str:
+    """Format UID for N-Quads: 0x... -> <0x...>, blank -> _:..."""
+    if uid.startswith("0x"):
+        return f"<{uid}>"
+    return uid  # expected to be _:label already
+
+
+def _format_predicate(pred: str) -> str:
+    """Wrap predicate in angle brackets for N-Quads."""
+    return f"<{pred}>"
+
+
+def _format_literal(value) -> str:
+    """Format scalar value as an RDF literal; use JSON escape and quote as string."""
+    # Convert everything to string, then JSON-escape to ensure quotes/backslashes are safe
+    return json.dumps(str(value))
+
+
+def write_nquads(obj: Dict, out_file) -> None:
+    """
+    Given a cleaned Dgraph JSON object (with 'uid' and possibly 'dgraph.type'),
+    emit N-Quads triples to out_file.
+    """
+    subj = _format_uid_token(obj["uid"]) if obj.get("uid") else None
+    if not subj:
+        return
+
+    # dgraph.type
+    dtype = obj.get("dgraph.type")
+    if dtype:
+        if isinstance(dtype, list):
+            for t in dtype:
+                out_file.write(f"{subj} <dgraph.type> {json.dumps(str(t))} .\n")
+        else:
+            out_file.write(f"{subj} <dgraph.type> {json.dumps(str(dtype))} .\n")
+
+    for pred, val in obj.items():
+        if pred in ("uid", "dgraph.type"):
+            continue
+        p = _format_predicate(pred)
+        if val is None:
+            continue
+        if isinstance(val, dict):
+            # uid link or nested structure
+            ref = val.get("uid")
+            if ref:
+                out_file.write(f"{subj} {p} {_format_uid_token(ref)} .\n")
+            else:
+                # Flatten scalar fields within nested dict, if any
+                for k2, v2 in val.items():
+                    if v2 is None:
+                        continue
+                    p2 = _format_predicate(f"{pred}.{k2}")
+                    out_file.write(f"{subj} {p2} {_format_literal(v2)} .\n")
+        elif isinstance(val, list):
+            for el in val:
+                if el is None:
+                    continue
+                if isinstance(el, dict) and "uid" in el and el["uid"]:
+                    out_file.write(f"{subj} {p} {_format_uid_token(el['uid'])} .\n")
+                else:
+                    out_file.write(f"{subj} {p} {_format_literal(el)} .\n")
+        else:
+            out_file.write(f"{subj} {p} {_format_literal(val)} .\n")
+
+
+def stream_collection_rdf(node_col, edge_col, node_fn, edge_fn, source_fn, out_file):
+    """
+    Stream nodes and edges in N-Quads to the given output file/stream.
+    Order: nodes first; then source nodes for each edge; then edge nodes.
+    """
+    # Nodes
+    total_count = 0
+    cursor = node_col.find({}, batch_size=BATCH_SIZE)
+    for doc in cursor:
+        if MAX_ITEMS is not None and total_count >= MAX_ITEMS:
+            break
+        obj = node_fn(doc)
+        write_nquads(obj, out_file)
+        total_count += 1
+
+    # Edges + Sources
+    for doc in edge_col.find({}, batch_size=BATCH_SIZE):
+        if MAX_ITEMS is not None and total_count >= MAX_ITEMS:
+            break
+
+        edge_id = doc.get('id')
+        for src in doc.get("sources", []):
+            src_obj = source_fn(src, edge_id)
+            write_nquads(src_obj, out_file)
+
+        edge_obj = edge_fn(doc)
+        write_nquads(edge_obj, out_file)
+        total_count += 1
 
 
 def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn, out_file):
@@ -266,6 +407,37 @@ def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn, out_file)
     out_file.write("\n]\n")
 
 
+def stream_collection_jsonl(node_col, edge_col, node_fn, edge_fn, source_fn, out_file):
+    """
+    Stream nodes and edges as JSON Lines (NDJSON): one JSON object per line,
+    without commas and without surrounding array brackets.
+    """
+    total_count = 0
+
+    # Nodes
+    cursor = node_col.find({}, batch_size=BATCH_SIZE)
+    for doc in cursor:
+        if MAX_ITEMS is not None and total_count >= MAX_ITEMS:
+            break
+        item = node_fn(doc)
+        out_file.write(json.dumps(item) + "\n")
+        total_count += 1
+
+    # Edges + Sources
+    for doc in edge_col.find({}, batch_size=BATCH_SIZE):
+        if MAX_ITEMS is not None and total_count >= MAX_ITEMS:
+            break
+
+        edge_id = doc.get('id')
+        for src in doc.get("sources", []):
+            src_item = source_fn(src, edge_id)
+            out_file.write(json.dumps(src_item) + "\n")
+
+        edge_item = edge_fn(doc)
+        out_file.write(json.dumps(edge_item) + "\n")
+        total_count += 1
+
+
 def load_mock_data(db, nodes_file, edges_file):
     """Loads data from JSONL files into the mock MongoDB."""
     print(f"Loading mock data from {nodes_file} and {edges_file}", file=sys.stderr)
@@ -306,11 +478,15 @@ def main():
     parser.add_argument('--prefix_version', default="prefix_version", help='Prefix for Dgraph fields, types, and UIDs.')
     parser.add_argument('--schema_path', default="schema.dgraph", help='Path to the original Dgraph schema file.')
     parser.add_argument('--output_file', default=None, help='Path to output JSON file. If not provided, streams to stdout.')
+    parser.add_argument('--uid_mode', choices=['hex', 'blank'], default='hex',
+                        help='UID generation mode: hex for 0x... deterministic IDs (default), or blank for _:name labels.')
+    parser.add_argument('--output_format', choices=['json', 'jsonl', 'rdf'], default='json',
+                        help='Output format: json (default) writes a JSON array; jsonl writes NDJSON (one object per line); rdf writes N-Quads (.rdf).')
 
     args = parser.parse_args()
 
     # --- Update Global Variables from Arguments ---
-    global MONGO_URI, DB_NAME, NODES_COLLECTION, EDGES_COLLECTION, BATCH_SIZE, MAX_ITEMS, PREFIX_VERSION, SCHEMA_PATH
+    global MONGO_URI, DB_NAME, NODES_COLLECTION, EDGES_COLLECTION, BATCH_SIZE, MAX_ITEMS, PREFIX_VERSION, SCHEMA_PATH, UID_MODE
     MONGO_URI = args.mongo_uri
     DB_NAME = args.db_name
     NODES_COLLECTION = args.nodes_collection
@@ -319,6 +495,7 @@ def main():
     MAX_ITEMS = args.max_items if args.max_items else None
     PREFIX_VERSION = args.prefix_version
     SCHEMA_PATH = args.schema_path
+    UID_MODE = args.uid_mode
 
     # --- Create versioned schema first ---
     create_versioned_schema(SCHEMA_PATH, PREFIX_VERSION)
@@ -338,25 +515,69 @@ def main():
 
     if args.output_file:
         print(f"Writing output to file: {args.output_file}", file=sys.stderr)
-        with open(args.output_file, 'w') as f:
+        mode = 'w'
+        with open(args.output_file, mode) as f:
+            if args.output_format == 'json':
+                stream_collection(
+                    db[NODES_COLLECTION],
+                    db[EDGES_COLLECTION],
+                    node_to_dgraph,
+                    edge_to_dgraph,
+                    source_to_dgraph,
+                    f
+                )
+            elif args.output_format == 'jsonl':
+                # If hex UID mode, emit NDJSON without array or commas
+                if UID_MODE != 'hex':
+                    print("jsonl output is designed for hex UID mode; proceeding regardless.", file=sys.stderr)
+                stream_collection_jsonl(
+                    db[NODES_COLLECTION],
+                    db[EDGES_COLLECTION],
+                    node_to_dgraph,
+                    edge_to_dgraph,
+                    source_to_dgraph,
+                    f
+                )
+            else:
+                stream_collection_rdf(
+                    db[NODES_COLLECTION],
+                    db[EDGES_COLLECTION],
+                    node_to_dgraph,
+                    edge_to_dgraph,
+                    source_to_dgraph,
+                    f
+                )
+    else:
+        print("Streaming output to stdout.", file=sys.stderr)
+        if args.output_format == 'json':
             stream_collection(
                 db[NODES_COLLECTION],
                 db[EDGES_COLLECTION],
                 node_to_dgraph,
                 edge_to_dgraph,
                 source_to_dgraph,
-                f  # Pass the file handle
+                sys.stdout
             )
-    else:
-        print("Streaming output to stdout.", file=sys.stderr)
-        stream_collection(
-            db[NODES_COLLECTION],
-            db[EDGES_COLLECTION],
-            node_to_dgraph,
-            edge_to_dgraph,
-            source_to_dgraph,
-            sys.stdout  # Pass stdout
-        )
+        elif args.output_format == 'jsonl':
+            if UID_MODE != 'hex':
+                print("jsonl output is designed for hex UID mode; proceeding regardless.", file=sys.stderr)
+            stream_collection_jsonl(
+                db[NODES_COLLECTION],
+                db[EDGES_COLLECTION],
+                node_to_dgraph,
+                edge_to_dgraph,
+                source_to_dgraph,
+                sys.stdout
+            )
+        else:
+            stream_collection_rdf(
+                db[NODES_COLLECTION],
+                db[EDGES_COLLECTION],
+                node_to_dgraph,
+                edge_to_dgraph,
+                source_to_dgraph,
+                sys.stdout
+            )
 
 
 if __name__ == "__main__":
