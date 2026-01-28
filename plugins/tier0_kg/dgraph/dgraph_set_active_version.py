@@ -34,6 +34,7 @@ import msgpack
 def setup_argument_parser():
     parser = argparse.ArgumentParser(description='Set active schema version in Dgraph')
     parser.add_argument('--version', '-v', required=False, help='Schema version to set as active')
+    parser.add_argument('--namespace', '-n', required=False, help='Namespace to set as active')
     parser.add_argument('--endpoint', '-e', default='http://localhost:8080', 
                        help='Dgraph endpoint (default: http://localhost:8080)')
     parser.add_argument('--create', '-c', action='store_true', 
@@ -141,6 +142,7 @@ def get_schema_versions(endpoint, token: str | None = None, debug: bool = False)
             uid
             schema_metadata_version
             schema_metadata_is_active
+                        schema_metadata_namespace
             schema_metadata_mapping
           }
         }
@@ -184,6 +186,7 @@ def get_schema_versions(endpoint, token: str | None = None, debug: bool = False)
                         uid
                         schema_metadata_version
                         schema_metadata_is_active
+                        schema_metadata_namespace
                         schema_metadata_mapping
                     }
                 }
@@ -214,7 +217,7 @@ def get_schema_versions(endpoint, token: str | None = None, debug: bool = False)
         print(f"Exception occurred: {e}")
         return None
 
-def set_active_version(endpoint, version, create=False, mapping_dir='.', token: str | None = None, debug: bool = False):
+def set_active_version(endpoint, version, create=False, mapping_dir='.', token: str | None = None, debug: bool = False, namespace: str | None = None):
     """Set the specified version as active using two transactions for stability."""
     # 1) Discover existing versions
     versions = get_schema_versions(endpoint, token)
@@ -233,16 +236,15 @@ def set_active_version(endpoint, version, create=False, mapping_dir='.', token: 
             print(f"Error: Version '{version}' does not exist. Use --create to create it.")
             return False
 
-        create_json = {
-            "set": [
-                {
-                    "dgraph.type": "SchemaMetadata",
-                    "schema_metadata_version": version,
-                    # Create as inactive; activation happens in step 3
-                    "schema_metadata_is_active": "false"
-                }
-            ]
+        create_node = {
+            "dgraph.type": "SchemaMetadata",
+            "schema_metadata_version": version,
+            # Create as inactive; activation happens in step 3
+            "schema_metadata_is_active": "false"
         }
+        if namespace is not None:
+            create_node["schema_metadata_namespace"] = str(namespace)
+        create_json = {"set": [create_node]}
         create_headers = build_headers(token)
         if debug:
             try:
@@ -283,6 +285,14 @@ def set_active_version(endpoint, version, create=False, mapping_dir='.', token: 
 
     # 3) Separate txn: deactivate others, activate target, and update mapping
     mapping_data = load_mapping_file(version, mapping_dir)
+    target_set = {
+        "uid": "uid(target)",
+        "schema_metadata_is_active": "true",
+        "schema_metadata_mapping": mapping_data
+    }
+    if namespace is not None:
+        target_set["schema_metadata_namespace"] = str(namespace)
+
     update_json = {
         "query": f"""
         {{
@@ -295,11 +305,7 @@ def set_active_version(endpoint, version, create=False, mapping_dir='.', token: 
                 "uid": "uid(versions)",
                 "schema_metadata_is_active": "false"
             },
-            {
-                "uid": "uid(target)",
-                "schema_metadata_is_active": "true",
-                "schema_metadata_mapping": mapping_data
-            }
+            target_set
         ]
     }
 
@@ -364,12 +370,14 @@ def display_versions(endpoint, token: str | None = None, debug: bool = False):
     for v in safe_versions:
         active = "✓" if v.get('schema_metadata_is_active') else " "
         version_name = v.get('schema_metadata_version', 'Unknown')
+        namespace = v.get('schema_metadata_namespace')
 
         # Decode mapping data to show summary
         mapping_data = decode_mapping_data(v.get('schema_metadata_mapping', ''))
         mapping_info = f" ({len(mapping_data)} mappings)" if mapping_data else " (no mapping)"
 
-        print(f" [{active}] {version_name}{mapping_info}")
+        ns_info = f" ns={namespace}" if namespace is not None else ""
+        print(f" [{active}] {version_name}{ns_info}{mapping_info}")
     print()
 
 def main():
@@ -397,7 +405,7 @@ def main():
         sys.exit(1)
 
     # Set active version
-    if set_active_version(args.endpoint, args.version, args.create, args.mapping_dir, args.token, args.debug):
+    if set_active_version(args.endpoint, args.version, args.create, args.mapping_dir, args.token, args.debug, args.namespace):
         # Show updated versions
         display_versions(args.endpoint, args.token, args.debug)
         print(f"Successfully set schema version '{args.version}' as active")
