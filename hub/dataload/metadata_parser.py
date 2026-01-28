@@ -13,44 +13,26 @@ def get_release_for_renci_kgs(self):
         return manifest_metadata["generated_version"]
 
     # parse metadata location from manifest
-    meta_url = manifest_metadata.get('url', None)
+    metadata_urls = [
+        manifest_metadata.get(key)
+        for key in ("release", "graph")
+        if manifest_metadata.get(key) is not None
+    ]
 
-    # fallback to parsing from data_url
-    if meta_url is None or not isinstance(meta_url, str):
-        data_urls = self.__class__.SRC_URLS
-        d_url = data_urls[0]
-        meta_url = d_url.rpartition('/')[0] + "/"
 
-    res = self.client.get(url=meta_url)
-
-    metadata_files =[]
-
-    if res.ok:
-        # get a list of files present on index page
-
-        # files = re.findall(r'href="([^"/][^"]+)"', res.text)
-        files = re.findall(r'href="([^"]+)"', res.text)
-
-        for f in files:
-            # check possible candidates for metadata json
-            if f.endswith('metadata.json') or f.endswith('meta.json'):
-                self.logger.info(f"metadata candidates found {f}")
-                metadata_files.append(f)
-
-    if metadata_files:
-        for f in metadata_files:
-            metadata_file = meta_url + f
-            meta_res = self.client.get(url=metadata_file)
+    if metadata_urls:
+        for url in metadata_urls:
+            meta_res = self.client.get(url=url)
             if meta_res.ok:
                 try:
                     metadata = meta_res.json()
                 except ValueError as e:
-                    self.logger.warning(f"Invalid JSON returned: {metadata_file}: {e}")
+                    self.logger.warning(f"Invalid JSON returned: {url}: {e}")
                     continue
 
                 # automat
-                if "graph_version" in metadata:
-                    generated_version = metadata["graph_version"]
+                if "release_version" in metadata:
+                    generated_version = metadata["release_version"]
                     self.logger.info(f"version determined automat style: {generated_version}")
                     break
 
