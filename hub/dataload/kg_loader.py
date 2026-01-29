@@ -1,6 +1,7 @@
 from functools import partial
 
 from hub.dataload.compressed_parser import load_from_tar
+from hub.dataload.info_parser import get_adj_list, encapsule, split_n_chunks, to_key_value_pair
 from hub.dataload.utils.pipeline import apply_processors
 from hub.dataload.utils.process_category import process_category_list
 from hub.dataload.utils.process_node_fields import process_chembl_black_box_warning
@@ -45,3 +46,52 @@ def parser(*args, **kwargs):
         kwargs['gen_seq'] = False
 
     yield from map(processor_pipeline, load_from_tar(*args, **kwargs))
+
+
+def node_info_parser(*args, **kwargs):
+    result_key = kwargs.pop('result_key')
+    adj_list_key = kwargs.pop('adj_list_key')
+
+    assert isinstance(result_key, str)
+    assert isinstance(adj_list_key, str)
+    assert result_key != adj_list_key
+
+    # disable extra payload
+    kwargs['gen_seq'] = False
+    kwargs['gen_id'] = False
+
+    edge_kwargs = {
+        **kwargs,
+        "entity": "edges"
+    }
+
+    node_kwargs = {
+        **kwargs,
+        "entity": "nodes"
+    }
+
+    edge_iterator = parser(*args, **edge_kwargs)
+    adj_list = get_adj_list(edge_iterator)
+    node_iterator = parser(*args, **node_kwargs)
+    # nodes = dict(to_key_value_pair(node_iterator))
+
+    encapsuled = encapsule({
+        adj_list_key: adj_list,
+    })
+
+
+    chunks = (10 ** 3) * 5
+
+    payload = []
+
+    node_chunks = split_n_chunks(encapsuled, chunks)
+    payload.extend(node_chunks)
+
+    return payload
+
+
+
+
+
+
+
