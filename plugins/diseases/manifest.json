@@ -4,12 +4,12 @@
         "jsonlines"
     ],
     "__metadata__": {
-        "graph": "https://stars.renci.org/var/translator/releases/diseases/latest/graph-metadata.json",
-        "release": "https://stars.renci.org/var/translator/releases/diseases/latest-release.json"
+        "graph": "https://kgx-storage.rtx.ai/releases/diseases/latest/graph-metadata.json",
+        "release": "https://kgx-storage.rtx.ai/releases/diseases/latest-release.json"
     },
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/translator/releases/diseases/latest/diseases.tar.zst"
+            "https://kgx-storage.rtx.ai/releases/diseases/latest/diseases.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_kgx_release"
@@ -31,7 +31,8 @@
                 "entity": "edges"
             },
             "on_duplicates": "error",
-            "mapping": "hub.dataload.mapping.kg_mapping:merged_edges_mapping"
+            "mapping": "hub.dataload.mapping.kg_mapping:merged_edges_mapping",
+            "class": "hub.dataload.uploader.KGXUploader"
         }
     ]
 }
