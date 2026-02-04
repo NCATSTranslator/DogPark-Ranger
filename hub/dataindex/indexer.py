@@ -100,12 +100,12 @@ class KGXIndexer(Indexer):
             }
         }
 
+        # elevate graph and release info if available
+        self.extract_graph_release(_build_doc, data_name)
 
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
 
-        # inject
-        self._inject_meta(_build_doc, data_name)
 
 
         # hard-coded for now to save time on builder creation
@@ -122,30 +122,16 @@ class KGXIndexer(Indexer):
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
 
-    def _inject_meta(self, build_doc:_BuildDoc, data_name:str):
+
+    def extract_graph_release(self, build_doc:_BuildDoc, data_name:str):
+        """Elevate graph and release metadata to top level"""
+        meta = build_doc['_meta']
         meta_src = build_doc['_meta']["src"][data_name]
 
-        try:
-            graph_loc = meta_src["graph"]
-            release_loc = meta_src["release"]
-            graph_metadata = requests.get(graph_loc).json()
-            release_metadata = requests.get(release_loc).json()
-
-            # injection
-            self.es_index_mappings["_meta"] = {
-                "graph": graph_metadata,
-                "release": release_metadata,
-            }
-
-
-        except KeyError as e:
-            self.logger.info(f"Can't locate metadata file: {e}. Injection bypassed.")
-        except requests.exceptions.RequestException as e:
-            self.logger.info(f"Error getting remote metadata: {e}. Injection bypassed.")
-        except json.JSONDecodeError as e:
-            self.logger.info(f"Error parsing remote metadata {e}. Injection bypassed.")
-
-
+        for _key in ["graph", "release"]:
+            data = meta_src.pop(_key, None)
+            if data is not None:
+                meta[_key] = data
 
     def _build_node_backend_client(self, build_doc: _BuildDoc, col_name:str) -> _BuildBackend:
         """
