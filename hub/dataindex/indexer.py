@@ -100,17 +100,13 @@ class KGXIndexer(Indexer):
             }
         }
 
+        # elevate graph and release info if available
+        self.extract_graph_release(_build_doc, data_name)
 
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
 
-        # inject
-        self._inject_meta(_build_doc, data_name)
-
-
-        # hard-coded for now to save time on builder creation
-        self.es_index_settings['number_of_shards'] = 5
-        self.es_index_settings['number_of_replicas'] = 2
+        self.apply_extra_settings(_build_doc, data_name)
 
         # -----------info-----------
 
@@ -121,31 +117,31 @@ class KGXIndexer(Indexer):
         self.setup_log()
         self.pinfo = ProcessInfo(self, indexer_env.get("concurrency", 10))
 
+    def apply_extra_settings(self, build_doc: _BuildDoc, data_name: str) -> None:
+        """Decide and apply number of shards/replica settings"""
 
-    def _inject_meta(self, build_doc:_BuildDoc, data_name:str):
+        # default 1 shard
+        # > 10M 3 shards
+        threshold = 10 ** 6 # 1 million
+        meta_stats = build_doc['_meta']["src"][data_name]["stats"]
+        num_of_docs = meta_stats.get(data_name + "_edges", 0)
+
+        if num_of_docs >= threshold:
+            self.es_index_settings["number_of_shards"] = 3
+
+        # todo integrate into deploy script
+        self.es_index_settings['number_of_replicas'] = 2
+
+
+    def extract_graph_release(self, build_doc:_BuildDoc, data_name:str):
+        """Elevate graph and release metadata to top level"""
+        meta = build_doc['_meta']
         meta_src = build_doc['_meta']["src"][data_name]
 
-        try:
-            graph_loc = meta_src["graph"]
-            release_loc = meta_src["release"]
-            graph_metadata = requests.get(graph_loc).json()
-            release_metadata = requests.get(release_loc).json()
-
-            # injection
-            self.es_index_mappings["_meta"] = {
-                "graph": graph_metadata,
-                "release": release_metadata,
-            }
-
-
-        except KeyError as e:
-            self.logger.info(f"Can't locate metadata file: {e}. Injection bypassed.")
-        except requests.exceptions.RequestException as e:
-            self.logger.info(f"Error getting remote metadata: {e}. Injection bypassed.")
-        except json.JSONDecodeError as e:
-            self.logger.info(f"Error parsing remote metadata {e}. Injection bypassed.")
-
-
+        for _key in ["graph", "release"]:
+            data = meta_src.pop(_key, None)
+            if data is not None:
+                meta[_key] = data
 
     def _build_node_backend_client(self, build_doc: _BuildDoc, col_name:str) -> _BuildBackend:
         """
