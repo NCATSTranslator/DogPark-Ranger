@@ -75,7 +75,7 @@ INDEX_CONFIG = {
         # default
         # None : "path.to.special.Indexer",
         None: "hub.dataindex.indexer.KGXIndexer",
-        "simple": "biothings.hub.dataindex.indexer.Indexer"
+        "build_config.ubergraph_nodes_info": "biothings.hub.dataindex.indexer.Indexer"
     },
     "env": {
         "test": {
