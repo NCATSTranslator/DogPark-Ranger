@@ -1,6 +1,7 @@
 import json
 import requests
 from biothings.hub.dataload.uploader import BaseSourceUploader
+from typing_extensions import override
 
 import config
 
@@ -10,11 +11,11 @@ class KGXUploader(BaseSourceUploader):
     # from template
     # __metadata__ = {"src_meta" : $__metadata__}
 
+    @override
     def generate_doc_src_master(self):
         """Parse metadata from graph/release json files provided with KG datasets"""
 
         # modify and  inject __metadata__ here
-
         if hasattr(self.__class__, "__metadata__"):
             meta = self.__class__.__metadata__
             try:
