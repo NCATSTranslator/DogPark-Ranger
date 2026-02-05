@@ -192,7 +192,10 @@ def merged_edges_mapping(cls):
 
         # unknown
         # "aggregator_knowledge_source": 111394,
-        "qualifiers": default_curie_keyword,
+
+        #"qualifiers": default_curie_keyword,
+        "qualifier": default_curie_keyword,
+
         "clinical_approval_status": default_simple_text,
         "number_of_cases": default_integer,
         "dgidb_interaction_score": default_half_float,
@@ -224,6 +227,8 @@ def merged_edges_mapping(cls):
         # always starts with NCBITaxon:
         "in_taxon": default_curie_keyword,
 
+        "in_taxon_label": default_keyword,
+
         "taxon": default_curie_keyword,
         "symbol": default_keyword,
         "full_name": default_keyword,
@@ -237,9 +242,10 @@ def merged_edges_mapping(cls):
         "chembl_black_box_warning": default_bool,
         "chembl_prodrug": default_bool,
 
+        "inheritance": default_simple_text,
+
         # no record with these fields
         "provided_by": index_disabled_text,
-        "inheritance": index_disabled_text,
 
     }
 
