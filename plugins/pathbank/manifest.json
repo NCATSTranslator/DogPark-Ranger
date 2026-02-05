@@ -1,0 +1,38 @@
+{
+    "version": "0.2",
+    "requires": [
+        "jsonlines"
+    ],
+    "__metadata__": {
+        "graph": "https://kgx-storage.rtx.ai/releases/pathbank/latest/graph-metadata.json",
+        "release": "https://kgx-storage.rtx.ai/releases/pathbank/latest-release.json"
+    },
+    "dumper": {
+        "data_url": [
+            "https://kgx-storage.rtx.ai/releases/pathbank/latest/pathbank.tar.zst"
+        ],
+        "uncompress": false,
+        "release": "hub.dataload.metadata_parser:get_kgx_release"
+    },
+    "uploaders": [
+        {
+            "name": "pathbank_nodes",
+            "parser": "hub.dataload.kg_loader:parser",
+            "parser_kwargs": {
+                "entity": "nodes"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
+        },
+        {
+            "name": "pathbank_edges",
+            "parser": "hub.dataload.kg_loader:parser",
+            "parser_kwargs": {
+                "entity": "edges"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:merged_edges_mapping",
+            "class": "hub.dataload.uploader.KGXUploader"
+        }
+    ]
+}
