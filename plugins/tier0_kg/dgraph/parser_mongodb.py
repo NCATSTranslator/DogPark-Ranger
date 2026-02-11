@@ -127,7 +127,7 @@ def compute_hex_uid(kind: str, version_prefix: str, identifier: str, salt: str =
 # --------------------------
 # UID HELPERS
 # --------------------------
-UID_MODE = "hex"  # default, overridden by CLI
+UID_MODE = "blank"  # default, overridden by CLI
 
 
 def uid_node(identifier: str) -> str:
@@ -187,6 +187,8 @@ def node_to_dgraph(doc):
         "chembl_black_box_warning": doc.get("chembl_black_box_warning"),
         "chembl_natural_product": doc.get("chembl_natural_product"),
         "chembl_prodrug": doc.get("chembl_prodrug"),
+
+        "in_taxon_label": doc.get("in_taxon_label"),
     }
     return clean(node)
 
@@ -246,7 +248,7 @@ def edge_to_dgraph(doc):
         "object_direction_qualifier": doc.get("object_direction_qualifier"),
         "subject_aspect_qualifier": doc.get("subject_aspect_qualifier"),
         "subject_direction_qualifier": doc.get("subject_direction_qualifier"),
-        "qualifiers": doc.get("qualifiers", []),
+        "qualifier": doc.get("qualifier"),
 
         "FDA_regulatory_approvals": doc.get("FDA_regulatory_approvals", []),
         "clinical_approval_status": doc.get("clinical_approval_status"),

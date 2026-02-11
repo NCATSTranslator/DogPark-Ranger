@@ -20,6 +20,8 @@ chembl_black_box_warning: string .
 chembl_natural_product: bool .
 chembl_prodrug: bool .
 
+in_taxon_label: string .
+
 # Edge properties
 predicate: string @index(exact) .
 predicate_ancestors: [string] @index(exact) .
@@ -41,7 +43,7 @@ object_aspect_qualifier: string .
 object_direction_qualifier: string .
 subject_aspect_qualifier: string .
 subject_direction_qualifier: string .
-qualifiers: [string] .
+qualifier: string .
 
 FDA_regulatory_approvals: [string] .
 clinical_approval_status: string .
@@ -107,6 +109,8 @@ type Node {
   chembl_black_box_warning
   chembl_natural_product
   chembl_prodrug
+
+  in_taxon_label
 }
 
 type Edge {
@@ -131,7 +135,7 @@ type Edge {
   object_direction_qualifier
   subject_aspect_qualifier
   subject_direction_qualifier
-  qualifiers
+  qualifier
   
   FDA_regulatory_approvals
   clinical_approval_status
