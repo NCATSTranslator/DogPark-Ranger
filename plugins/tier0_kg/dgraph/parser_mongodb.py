@@ -9,6 +9,8 @@ import hashlib
 from pymongo import MongoClient
 from mongomock import MongoClient as MockMongoClient
 from typing import Dict, List, Tuple
+from urllib.parse import urlparse
+from urllib.request import urlopen, Request
 
 # --------------------------
 # CONFIGURATION
@@ -161,6 +163,70 @@ def clean(d):
         cleaned_list = [clean(x) for x in d if x is not None and x != ""]
         return cleaned_list if cleaned_list else None
     return d
+
+
+# --------------------------
+# SCHEMA METADATA (single item)
+# --------------------------
+
+def _is_http_url(s: str) -> bool:
+    try:
+        u = urlparse(str(s))
+        return u.scheme in ("http", "https") and bool(u.netloc)
+    except Exception:
+        return False
+
+
+def _mapping_b64_from_source(source: str | None) -> str:
+    """
+    source:
+      - None/"" => empty mapping {}
+      - http(s)://... => fetch response body
+      - otherwise => read local file body
+    Body is msgpacked (JSON-decoded if possible; else raw bytes) and base64-encoded.
+    """
+    if not source:
+        payload_obj = {}
+    else:
+        if _is_http_url(source):
+            with urlopen(source, timeout=30) as resp:
+                body = resp.read()
+        else:
+            with open(source, "rb") as f:
+                body = f.read()
+
+        # Prefer JSON -> msgpack(object). If not JSON, msgpack(raw bytes).
+        try:
+            payload_obj = json.loads(body.decode("utf-8"))
+        except Exception:
+            payload_obj = body
+
+    return base64.b64encode(msgpack.packb(payload_obj, use_bin_type=True)).decode("ascii")
+
+
+def uid_schema_metadata() -> str:
+    """One SchemaMetadata node per PREFIX_VERSION."""
+    if UID_MODE == "hex":
+        return compute_hex_uid("SchemaMetadata", PREFIX_VERSION, str(PREFIX_VERSION))
+    return f"_:{PREFIX_VERSION}_schema_metadata"
+
+
+def schema_metadata_to_dgraph() -> Dict:
+    """
+    IMPORTANT: Do NOT run through clean(), because clean() would prefix
+    schema_metadata_* predicates, but the schema keeps them un-prefixed.
+    """
+    mapping_b64 = SCHEMA_METADATA_MAPPING_B64
+    if mapping_b64 is None:
+        mapping_b64 = _mapping_b64_from_source(None)
+
+    return {
+        "dgraph.type": "SchemaMetadata",
+        "uid": uid_schema_metadata(),
+        "schema_metadata_version": str(PREFIX_VERSION),  # from --prefix_version
+        "schema_metadata_is_active": "true",             # literal string "true"
+        "schema_metadata_mapping": mapping_b64,
+    }
 
 
 def node_to_dgraph(doc):
@@ -338,6 +404,9 @@ def stream_collection_rdf(node_col, edge_col, node_fn, edge_fn, source_fn, out_f
     Stream nodes and edges in N-Quads to the given output file/stream.
     Order: nodes first; then source nodes for each edge; then edge nodes.
     """
+    # Schema metadata (first)
+    write_nquads(schema_metadata_to_dgraph(), out_file)
+
     # Nodes
     total_count = 0
     cursor = node_col.find({}, batch_size=BATCH_SIZE)
@@ -349,6 +418,7 @@ def stream_collection_rdf(node_col, edge_col, node_fn, edge_fn, source_fn, out_f
         total_count += 1
 
     # Edges + Sources
+    total_count = 0
     for doc in edge_col.find({}, batch_size=BATCH_SIZE):
         if MAX_ITEMS is not None and total_count >= MAX_ITEMS:
             break
@@ -370,6 +440,10 @@ def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn, out_file)
     out_file.write("[\n")
     first = True
 
+    # Schema metadata (first)
+    out_file.write(json.dumps(schema_metadata_to_dgraph()))
+    first = False
+
     # Nodes
     total_count = 0
     cursor = node_col.find({}, batch_size=BATCH_SIZE)
@@ -384,6 +458,7 @@ def stream_collection(node_col, edge_col, node_fn, edge_fn, source_fn, out_file)
         total_count += 1
 
     # --- Edges + Sources ---
+    total_count = 0
     for doc in edge_col.find({}, batch_size=BATCH_SIZE):
         if MAX_ITEMS is not None and total_count >= MAX_ITEMS:
             break
@@ -414,9 +489,11 @@ def stream_collection_jsonl(node_col, edge_col, node_fn, edge_fn, source_fn, out
     Stream nodes and edges as JSON Lines (NDJSON): one JSON object per line,
     without commas and without surrounding array brackets.
     """
-    total_count = 0
+    # Schema metadata (first)
+    out_file.write(json.dumps(schema_metadata_to_dgraph()) + "\n")
 
     # Nodes
+    total_count = 0
     cursor = node_col.find({}, batch_size=BATCH_SIZE)
     for doc in cursor:
         if MAX_ITEMS is not None and total_count >= MAX_ITEMS:
@@ -426,6 +503,7 @@ def stream_collection_jsonl(node_col, edge_col, node_fn, edge_fn, source_fn, out
         total_count += 1
 
     # Edges + Sources
+    total_count = 0
     for doc in edge_col.find({}, batch_size=BATCH_SIZE):
         if MAX_ITEMS is not None and total_count >= MAX_ITEMS:
             break
@@ -484,11 +562,14 @@ def main():
                         help='UID generation mode: hex for 0x... deterministic IDs (default), or blank for _:name labels.')
     parser.add_argument('--output_format', choices=['json', 'jsonl', 'rdf'], default='json',
                         help='Output format: json (default) writes a JSON array; jsonl writes NDJSON (one object per line); rdf writes N-Quads (.rdf).')
-
+    parser.add_argument('--schema_metadata_mapping_source', default=None,
+                        help='HTTP URL or local file path for SchemaMetadata.schema_metadata_mapping. '
+                        'Body is msgpack+base64 encoded (JSON-decoded if possible; else raw bytes).'
+    )
     args = parser.parse_args()
 
     # --- Update Global Variables from Arguments ---
-    global MONGO_URI, DB_NAME, NODES_COLLECTION, EDGES_COLLECTION, BATCH_SIZE, MAX_ITEMS, PREFIX_VERSION, SCHEMA_PATH, UID_MODE
+    global MONGO_URI, DB_NAME, NODES_COLLECTION, EDGES_COLLECTION, BATCH_SIZE, MAX_ITEMS, PREFIX_VERSION, SCHEMA_PATH, UID_MODE, SCHEMA_METADATA_MAPPING_B64
     MONGO_URI = args.mongo_uri
     DB_NAME = args.db_name
     NODES_COLLECTION = args.nodes_collection
@@ -498,6 +579,9 @@ def main():
     PREFIX_VERSION = args.prefix_version
     SCHEMA_PATH = args.schema_path
     UID_MODE = args.uid_mode
+
+    # Compute once (so we don't re-fetch/re-read on each output stream call)
+    SCHEMA_METADATA_MAPPING_B64 = _mapping_b64_from_source(args.schema_metadata_mapping_source)
 
     # --- Create versioned schema first ---
     create_versioned_schema(SCHEMA_PATH, PREFIX_VERSION)
