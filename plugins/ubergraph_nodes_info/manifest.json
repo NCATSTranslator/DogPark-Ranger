@@ -5,7 +5,7 @@
     ],
     "dumper": {
         "data_url": [
-            "https://stars.renci.org/var/translator/releases/ubergraph/latest/ubergraph.tar.zst"
+            "https://kgx-storage.rtx.ai/releases/ubergraph/latest/ubergraph.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_kgx_release"
@@ -16,7 +16,8 @@
             "parser": "hub.dataload.kg_loader:node_info_parser",
             "parser_kwargs": {
                 "result_key": "nodes",
-                "adj_list_key": "mapping"
+                "adj_list_key": "mapping",
+                "should_reverse": true
             },
             "on_duplicates": "error",
             "mapping": "hub.dataload.mapping.info_mapping:info_mapping"
