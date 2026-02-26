@@ -4,19 +4,19 @@
         "jsonlines"
     ],
     "__metadata__": {
-        "graph": "https://kgx-storage.rtx.ai/releases/gene2phenotype/latest/graph-metadata.json",
-        "release": "https://kgx-storage.rtx.ai/releases/gene2phenotype/latest-release.json"
+        "graph": "https://kgx-storage.rtx.ai/releases/pathbank/latest/graph-metadata.json",
+        "release": "https://kgx-storage.rtx.ai/releases/pathbank/latest-release.json"
     },
     "dumper": {
         "data_url": [
-            "https://kgx-storage.rtx.ai/releases/gene2phenotype/latest/gene2phenotype.tar.zst"
+            "https://kgx-storage.rtx.ai/releases/pathbank/latest/pathbank.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_kgx_release"
     },
     "uploaders": [
         {
-            "name": "gene2phenotype_nodes",
+            "name": "pathbank_nodes",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "nodes"
@@ -26,7 +26,7 @@
             "class": "hub.dataload.uploader.KGXUploader"
         },
         {
-            "name": "gene2phenotype_edges",
+            "name": "pathbank_edges",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges"

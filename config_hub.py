@@ -75,7 +75,7 @@ INDEX_CONFIG = {
         # default
         # None : "path.to.special.Indexer",
         None: "hub.dataindex.indexer.KGXIndexer",
-        "simple": "biothings.hub.dataindex.indexer.Indexer"
+        "build_config.simple_index": "biothings.hub.dataindex.indexer.Indexer"
     },
     "env": {
         "test": {

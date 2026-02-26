@@ -1,4 +1,6 @@
-def get_release_for_renci_kgs(self):
+def get_kgx_release(self):
+    """versioner for kgx datasets"""
+
     # "self" is a dumper instance, see:
     # https://github.com/biothings/biothings.api/blob/master/biothings/hub/dataload/dumper.py
     import re

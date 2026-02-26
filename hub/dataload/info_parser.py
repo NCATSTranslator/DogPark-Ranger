@@ -7,13 +7,20 @@ from typing import Iterable, Any
 import msgpack
 
 
-def get_adj_list(edge_iterator: Iterable) -> dict[str, list[str]]:
+def get_adj_list(edge_iterator: Iterable, reverse=False) -> dict[str, list[str]]:
     adj_set = defaultdict(set[str])
 
     for edge in edge_iterator:
         sub = edge['subject']
         obj = edge['object']
-        adj_set[sub].add(obj)
+
+        if reverse:
+            # ubergraph edges are strictly `subclass_of`
+            adj_set[obj].add(sub)
+        else:
+            adj_set[sub].add(obj)
+
+
 
     adj_list: dict[str, list[str]] = {
         k: list(v) for k, v in adj_set.items()
