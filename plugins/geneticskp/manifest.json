@@ -22,7 +22,8 @@
                 "entity": "nodes"
             },
             "on_duplicates": "error",
-            "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
+            "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping",
+            "class": "hub.dataload.uploader.KGXUploader"
         },
         {
             "name": "geneticskp_edges",
