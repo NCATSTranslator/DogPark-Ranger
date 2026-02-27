@@ -14,7 +14,7 @@ def nodes_mapping(cls):
     }
 
     default_curie_keyword = {
-        **default_keyword,
+        "type": "keyword",
         "fields": {
             "parts": {
                 "type": "text",
@@ -95,7 +95,7 @@ def merged_edges_mapping(cls):
     # }
 
     default_curie_keyword = {
-        **default_keyword,
+        "type": "keyword",
         "fields": {
             "parts": {
                 "type": "text",
