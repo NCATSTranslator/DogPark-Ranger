@@ -22,6 +22,7 @@ from urllib.request import urlopen, Request
 # BATCH_SIZE = 2000                  # cursor batch size
 # MAX_ITEMS = None                   # None for all, or set number for testing
 # PREFIX_VERSION = "vTest"           # prefix for fields, types, uids
+# SOURCE_VERSION = "vYYYYMMDD"       # version for the source data
 # SCHEMA_PATH = "schema.dgraph"      # original schema file
 # --------------------------
 
@@ -224,6 +225,7 @@ def schema_metadata_to_dgraph() -> Dict:
         "dgraph.type": "SchemaMetadata",
         "uid": uid_schema_metadata(),
         "schema_metadata_version": str(PREFIX_VERSION),  # from --prefix_version
+        "schema_source_version": str(SOURCE_VERSION),  # from --source_version
         "schema_metadata_is_active": "true",             # literal string "true"
         "schema_metadata_mapping": mapping_b64,
     }
@@ -556,6 +558,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=2000, help='Cursor batch size.')
     parser.add_argument('--max_items', type=int, default=None, help='Maximum number of items to process. Set to None for no limit.')
     parser.add_argument('--prefix_version', default="prefix_version", help='Prefix for Dgraph fields, types, and UIDs.')
+    parser.add_argument('--source_version', default="source_version", help='Version for the source data.')
     parser.add_argument('--schema_path', default="schema.dgraph", help='Path to the original Dgraph schema file.')
     parser.add_argument('--output_file', default=None, help='Path to output JSON file. If not provided, streams to stdout.')
     parser.add_argument('--uid_mode', choices=['hex', 'blank'], default='hex',
@@ -569,7 +572,7 @@ def main():
     args = parser.parse_args()
 
     # --- Update Global Variables from Arguments ---
-    global MONGO_URI, DB_NAME, NODES_COLLECTION, EDGES_COLLECTION, BATCH_SIZE, MAX_ITEMS, PREFIX_VERSION, SCHEMA_PATH, UID_MODE, SCHEMA_METADATA_MAPPING_B64
+    global MONGO_URI, DB_NAME, NODES_COLLECTION, EDGES_COLLECTION, BATCH_SIZE, MAX_ITEMS, PREFIX_VERSION, SOURCE_VERSION, SCHEMA_PATH, UID_MODE, SCHEMA_METADATA_MAPPING_B64
     MONGO_URI = args.mongo_uri
     DB_NAME = args.db_name
     NODES_COLLECTION = args.nodes_collection
@@ -577,6 +580,7 @@ def main():
     BATCH_SIZE = args.batch_size
     MAX_ITEMS = args.max_items if args.max_items else None
     PREFIX_VERSION = args.prefix_version
+    SOURCE_VERSION = args.source_version
     SCHEMA_PATH = args.schema_path
     UID_MODE = args.uid_mode
 
