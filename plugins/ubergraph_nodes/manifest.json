@@ -1,0 +1,28 @@
+{
+    "version": "0.2",
+    "requires": [
+        "jsonlines"
+    ],
+    "__metadata__": {
+        "graph": "https://kgx-storage.rtx.ai/releases/ubergraph/latest/graph-metadata.json",
+        "release": "https://kgx-storage.rtx.ai/releases/ubergraph/latest-release.json"
+    },
+    "dumper": {
+        "data_url": [
+            "https://kgx-storage.rtx.ai/releases/ubergraph/latest/ubergraph.tar.zst"
+        ],
+        "uncompress": false,
+        "release": "hub.dataload.metadata_parser:get_kgx_release"
+    },
+    "uploaders": [
+        {
+            "name": "ubergraph_nodes",
+            "parser": "hub.dataload.kg_loader:parser",
+            "parser_kwargs": {
+                "entity": "nodes"
+            },
+            "on_duplicates": "error",
+            "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping"
+        }
+    ]
+}
