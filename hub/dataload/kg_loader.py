@@ -49,13 +49,10 @@ def parser(*args, **kwargs):
 
 
 def node_info_parser(*args, **kwargs):
-    result_key = kwargs.pop('result_key')
     adj_list_key = kwargs.pop('adj_list_key')
     should_reverse = kwargs.pop('should_reverse', False)
 
-    assert isinstance(result_key, str)
     assert isinstance(adj_list_key, str)
-    assert result_key != adj_list_key
 
     # disable extra payload
     kwargs['gen_seq'] = False
@@ -73,11 +70,12 @@ def node_info_parser(*args, **kwargs):
 
     edge_iterator = parser(*args, **edge_kwargs)
     adj_list = get_adj_list(edge_iterator, should_reverse)
-    node_iterator = parser(*args, **node_kwargs)
+    # node_iterator = parser(*args, **node_kwargs)
     # nodes = dict(to_key_value_pair(node_iterator))
 
     encapsuled = encapsule({
         adj_list_key: adj_list,
+        "size": len(adj_list),
     })
 
 

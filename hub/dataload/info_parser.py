@@ -2,7 +2,7 @@ import base64
 import math
 import zlib
 from collections import defaultdict
-from typing import Iterable, Any
+from typing import Iterable
 
 import msgpack
 
