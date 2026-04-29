@@ -15,7 +15,6 @@
             "name": "ubergraph_nodes_info",
             "parser": "hub.dataload.kg_loader:node_info_parser",
             "parser_kwargs": {
-                "result_key": "nodes",
                 "adj_list_key": "mapping",
                 "should_reverse": true
             },
