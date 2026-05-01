@@ -10,12 +10,10 @@ QUALIFIERS = [
     "sex_qualifier",
 ]
 
-def process_qualifiers(edge):
+def process_qualifiers(edge, unique_qualifier_set: set):
     """
     merge qualifier fields of a given edge
     """
-    qualifier_fields = []
-
     for field in list(edge.keys()):
         if biolink.is_qualifier(field):
             field_value = edge[field]
@@ -31,7 +29,7 @@ def process_qualifiers(edge):
                 edge.pop(field)
 
             edge[field_stripped] = field_value
+            unique_qualifier_set.add(field_stripped)
 
 
     return edge
-

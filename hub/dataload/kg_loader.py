@@ -10,6 +10,22 @@ from hub.dataload.utils.process_qualifiers import process_qualifiers
 from hub.dataload.utils.process_sources import process_sources
 
 
+class ParserResult:
+    def __init__(self, docs, metadata=None):
+        self.docs = iter(docs)
+        self.metadata = metadata or {}
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self.docs)
+
+    def items(self):
+        for doc in self:
+            yield doc["_id"], doc
+
+
 def node_processor(node):
     processors = [
         process_chembl_black_box_warning,
@@ -18,10 +34,10 @@ def node_processor(node):
     return apply_processors(processors, node)
 
 
-def edge_processor(predicate_cache: dict, edge):
+def edge_processor(predicate_cache: dict, unique_qualifier_set: set, edge):
     processors = [
         process_category_list,
-        process_qualifiers,
+        partial(process_qualifiers, unique_qualifier_set=unique_qualifier_set),
         process_sources,
         # we need cache to do faster ancestor look up
         partial(process_predicate, predicate_cache=predicate_cache)
@@ -31,21 +47,36 @@ def edge_processor(predicate_cache: dict, edge):
 
 def parser(*args, **kwargs):
     entity = kwargs.get('entity')
+    unique_qualifier_set = kwargs.pop("qualifier_set", None)
 
     if entity is None:
         raise ValueError("No entity specified")
 
+    predicate_cache = {}
+    if unique_qualifier_set is None:
+        unique_qualifier_set = set()
+
     processor_pipeline = (
         node_processor
         if entity == "nodes"
-        else partial(edge_processor, {}) # initialize predicate look-up cache
+        else partial(
+            edge_processor,
+            predicate_cache,  # initialize predicate look-up cache
+            unique_qualifier_set,
+        )
     )
 
     # disable sequence generation by default
     if entity == "nodes" and kwargs.get('gen_seq', None) is None:
         kwargs['gen_seq'] = False
 
-    yield from map(processor_pipeline, load_from_tar(*args, **kwargs))
+    docs = map(processor_pipeline, load_from_tar(*args, **kwargs))
+    metadata = {}
+
+    if entity == "edges":
+        metadata["qualifier_fields"] = unique_qualifier_set
+
+    return ParserResult(docs, metadata)
 
 
 def node_info_parser(*args, **kwargs):
@@ -87,10 +118,3 @@ def node_info_parser(*args, **kwargs):
     payload.extend(node_chunks)
 
     return payload
-
-
-
-
-
-
-
