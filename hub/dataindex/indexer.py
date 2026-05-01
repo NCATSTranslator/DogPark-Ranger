@@ -100,8 +100,8 @@ class KGXIndexer(Indexer):
             }
         }
 
-        # elevate graph and release info if available
-        self.extract_graph_release(_build_doc, data_name)
+        # elevate source metadata for the edge collection being indexed
+        self.extract_source_metadata(_build_doc, data_name)
 
         _build_doc.enrich_settings(self.es_index_settings)
         _build_doc.enrich_mappings(self.es_index_mappings)
@@ -133,15 +133,33 @@ class KGXIndexer(Indexer):
         self.es_index_settings['number_of_replicas'] = 2
 
 
-    def extract_graph_release(self, build_doc:_BuildDoc, data_name:str):
-        """Elevate graph and release metadata to top level"""
+    def extract_source_metadata(self, build_doc:_BuildDoc, data_name:str):
+        """Elevate shared and edge-scoped source metadata to top level"""
         meta = build_doc['_meta']
         meta_src = build_doc['_meta']["src"][data_name]
+        reserved_keys = {"stats", "version"}
+        edge_scoped_keys = []
 
-        for _key in ["graph", "release"]:
+        for key, value in list(meta_src.items()):
+            is_reserved = key in reserved_keys
+            is_edge_scoped = isinstance(value, dict) and set(value) == {self.mongo_edge_collection_name}
+
+            if not is_reserved and is_edge_scoped:
+                meta_src[key] = value[self.mongo_edge_collection_name]
+                edge_scoped_keys.append(key)
+
+        for _key in ["graph", "release", *edge_scoped_keys]:
             data = meta_src.pop(_key, None)
             if data is not None:
                 meta[_key] = data
+
+        unmerged_keys = {
+            key: value
+            for key, value in meta_src.items()
+            if key not in reserved_keys and isinstance(value, dict)
+        }
+        if unmerged_keys:
+            raise ValueError(f"Unmerged source metadata found for {data_name}: {unmerged_keys}")
 
     def _build_node_backend_client(self, build_doc: _BuildDoc, col_name:str) -> _BuildBackend:
         """
