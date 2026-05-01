@@ -137,7 +137,8 @@ class KGXIndexer(Indexer):
         """Elevate shared and edge-scoped source metadata to top level"""
         meta = build_doc['_meta']
         meta_src = build_doc['_meta']["src"][data_name]
-        reserved_keys = {"stats", "version"}
+        collection_names = {self.mongo_edge_collection_name, self.mongo_node_collection_name}
+        reserved_keys = {"code", "download_date", "stats", "upload_date", "version"}
         edge_scoped_keys = []
 
         for key, value in list(meta_src.items()):
@@ -156,7 +157,11 @@ class KGXIndexer(Indexer):
         unmerged_keys = {
             key: value
             for key, value in meta_src.items()
-            if key not in reserved_keys and isinstance(value, dict)
+            if (
+                key not in reserved_keys
+                and isinstance(value, dict)
+                and set(value).issubset(collection_names)
+            )
         }
         if unmerged_keys:
             raise ValueError(f"Unmerged source metadata found for {data_name}: {unmerged_keys}")
