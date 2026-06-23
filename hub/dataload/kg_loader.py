@@ -42,8 +42,8 @@ def edge_processor(predicate_cache: dict, unique_qualifier_set: set, edge):
     processors = [
         process_category_list,
         partial(process_qualifiers, unique_qualifier_set=unique_qualifier_set),
-        partial(process_attributes, entity="edges"),
         process_sources,
+        partial(process_attributes, entity="edges"),
         # we need cache to do faster ancestor look up
         partial(process_predicate, predicate_cache=predicate_cache)
     ]
