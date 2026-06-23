@@ -39,7 +39,10 @@ DINGO_KG_NODE_TOPLEVEL_VALUES = {
 
 def process_attributes(current, entity: Entity):
     """Collect non-core, non-qualifier fields into a source-only attributes object."""
-    attributes: dict[str, Any] = {}
+    existing_attributes = current.get(ATTRIBUTE_FIELD)
+    attributes: dict[str, Any] = (
+        dict(existing_attributes) if isinstance(existing_attributes, dict) else {}
+    )
     if entity == "edges":
         top_level_fields = DINGO_KG_EDGE_TOPLEVEL_VALUES
     elif entity == "nodes":
