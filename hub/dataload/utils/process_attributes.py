@@ -1,0 +1,60 @@
+from typing import Any
+
+from typing_extensions import Literal
+
+from hub.dataload.utils.postprocessing import biolink
+
+
+Entity = Literal["nodes", "edges"]
+
+
+DINGO_KG_EDGE_TOPLEVEL_VALUES = {
+    "binding",
+    "direction",
+    "predicate",
+    "predicate_ancestors",
+    "node",
+    "sources",
+    "source_inforeses",
+    "id",
+    "subject",
+    "object",
+    "_index",
+    "seq_",
+    "negated",  # Should only ever show up as false, field to be removed in future
+    "eid",
+}
+
+
+DINGO_KG_NODE_TOPLEVEL_VALUES = {
+    "binding",
+    "id",
+    "name",
+    "edges",
+    "category",
+}
+
+
+def process_attributes(current, entity: Entity):
+    """processor for DINGO datasets, where `category` is already a list"""
+    attributes = dict[str, Any]()
+    if entity == "edges":
+        top_level_fields = DINGO_KG_EDGE_TOPLEVEL_VALUES
+    elif entity == "nodes":
+        top_level_fields = DINGO_KG_NODE_TOPLEVEL_VALUES
+    else:
+        raise ValueError(f"Unknown entity: {entity!r}")
+
+    for key, value in current.items():
+        if key in top_level_fields or biolink.is_qualifier(key):
+            continue
+        else:
+            attributes[key] = value
+
+    current['attributes'] = attributes
+
+    # todo possible way to reduce redundancy:
+    #  top-level attributes indexed on ES, but excluded in store source
+    #  (script/runtime field, autogen at indexing time)
+
+    return current

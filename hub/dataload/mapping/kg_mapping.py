@@ -23,6 +23,7 @@ def nodes_mapping(cls):
     }
 
     default_bool = {"type": "boolean"}
+    index_disabled_object = {"type": "object", "enabled": False}
 
     # def for not indexed types
     index_disabled_text = {
@@ -38,6 +39,7 @@ def nodes_mapping(cls):
         "category": default_keyword,
 
         "id": default_curie_keyword,
+        "attributes": index_disabled_object,
 
         ## fields below are attributes
         "information_content": default_half_float,
@@ -123,6 +125,7 @@ def merged_edges_mapping(cls):
 
         "category": index_disabled_text,
         "id": index_disabled_text,
+        "attributes": index_disabled_object,
         "negated": index_disabled_bool,
 
         # will be overridden when merged with nodes
@@ -218,6 +221,7 @@ def merged_edges_mapping(cls):
         "category": default_keyword,
 
         "id": default_curie_keyword,
+        "attributes": index_disabled_object,
 
         ## fields below are attributes
         "information_content": default_half_float,
@@ -260,5 +264,4 @@ def merged_edges_mapping(cls):
                 "properties": nodes_props
             },
     }
-
 
