@@ -11,6 +11,7 @@ ATTRIBUTE_FIELD = "attributes"
 
 DINGO_KG_EDGE_TOPLEVEL_VALUES = {
     "binding",
+    "category",
     "direction",
     "predicate",
     "predicate_ancestors",
@@ -37,7 +38,7 @@ DINGO_KG_NODE_TOPLEVEL_VALUES = {
 
 
 def process_attributes(current, entity: Entity):
-    """processor for DINGO datasets, where `category` is already a list"""
+    """Collect non-core, non-qualifier fields into a source-only attributes object."""
     attributes: dict[str, Any] = {}
     if entity == "edges":
         top_level_fields = DINGO_KG_EDGE_TOPLEVEL_VALUES
