@@ -2,6 +2,7 @@ from typing import Any
 
 from typing_extensions import Literal
 
+from hub.dataload.mapping import kg_mapping
 from hub.dataload.utils.postprocessing import biolink
 
 
@@ -39,20 +40,28 @@ DINGO_KG_NODE_TOPLEVEL_VALUES = {
 }
 
 
+EDGE_TOPLEVEL_FIELDS = DINGO_KG_EDGE_TOPLEVEL_VALUES | set(
+    kg_mapping.merged_edges_mapping(None)
+)
+NODE_TOPLEVEL_FIELDS = DINGO_KG_NODE_TOPLEVEL_VALUES | set(
+    kg_mapping.nodes_mapping(None)
+)
+
+
 def process_attributes(current, entity: Entity):
-    """Collect non-core, non-qualifier fields into a source-only attributes object."""
+    """Move unmapped, non-qualifier fields into a source-only attributes object."""
     existing_attributes = current.get(ATTRIBUTE_FIELD)
     attributes: dict[str, Any] = (
         dict(existing_attributes) if isinstance(existing_attributes, dict) else {}
     )
     if entity == "edges":
-        top_level_fields = DINGO_KG_EDGE_TOPLEVEL_VALUES
+        top_level_fields = EDGE_TOPLEVEL_FIELDS
     elif entity == "nodes":
-        top_level_fields = DINGO_KG_NODE_TOPLEVEL_VALUES
+        top_level_fields = NODE_TOPLEVEL_FIELDS
     else:
         raise ValueError(f"Unknown entity: {entity!r}")
 
-    for key, value in current.items():
+    for key, value in list(current.items()):
         if (
             key == ATTRIBUTE_FIELD
             or key in top_level_fields
@@ -60,6 +69,7 @@ def process_attributes(current, entity: Entity):
         ):
             continue
         attributes[key] = value
+        del current[key]
 
     current[ATTRIBUTE_FIELD] = attributes
 
