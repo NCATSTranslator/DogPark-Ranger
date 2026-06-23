@@ -5,7 +5,7 @@
     ],
     "dumper": {
         "data_url": [
-            "https://kgx-storage.rtx.ai/releases/ubergraph/latest/ubergraph.tar.zst"
+            "https://kgx-storage.ci.transltr.io/releases/ubergraph/latest/ubergraph.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_kgx_release"

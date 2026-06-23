@@ -4,12 +4,12 @@
         "jsonlines"
     ],
     "__metadata__": {
-        "graph": "https://kgx-storage.rtx.ai/releases/semmeddb/latest/graph-metadata.json",
-        "release": "https://kgx-storage.rtx.ai/releases/semmeddb/latest-release.json"
+        "graph": "https://kgx-storage.ci.transltr.io/releases/semmeddb/latest/graph-metadata.json",
+        "release": "https://kgx-storage.ci.transltr.io/releases/semmeddb/latest-release.json"
     },
     "dumper": {
         "data_url": [
-            "https://kgx-storage.rtx.ai/releases/semmeddb/latest/semmeddb.tar.zst"
+            "https://kgx-storage.ci.transltr.io/releases/semmeddb/latest/semmeddb.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_kgx_release"
