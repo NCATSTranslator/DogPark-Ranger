@@ -19,6 +19,7 @@ DINGO_KG_EDGE_TOPLEVEL_VALUES = {
     "sources",
     "source_inforeses",
     "id",
+    "_id",
     "subject",
     "object",
     "_index",
@@ -31,6 +32,7 @@ DINGO_KG_EDGE_TOPLEVEL_VALUES = {
 DINGO_KG_NODE_TOPLEVEL_VALUES = {
     "binding",
     "id",
+    "_id",
     "name",
     "edges",
     "category",
