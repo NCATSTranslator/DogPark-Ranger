@@ -6,6 +6,7 @@ from hub.dataload.utils.postprocessing import biolink
 
 
 Entity = Literal["nodes", "edges"]
+ATTRIBUTE_FIELD = "attributes"
 
 
 DINGO_KG_EDGE_TOPLEVEL_VALUES = {
@@ -37,7 +38,7 @@ DINGO_KG_NODE_TOPLEVEL_VALUES = {
 
 def process_attributes(current, entity: Entity):
     """processor for DINGO datasets, where `category` is already a list"""
-    attributes = dict[str, Any]()
+    attributes: dict[str, Any] = {}
     if entity == "edges":
         top_level_fields = DINGO_KG_EDGE_TOPLEVEL_VALUES
     elif entity == "nodes":
@@ -46,12 +47,15 @@ def process_attributes(current, entity: Entity):
         raise ValueError(f"Unknown entity: {entity!r}")
 
     for key, value in current.items():
-        if key in top_level_fields or biolink.is_qualifier(key):
+        if (
+            key == ATTRIBUTE_FIELD
+            or key in top_level_fields
+            or biolink.is_qualifier(key)
+        ):
             continue
-        else:
-            attributes[key] = value
+        attributes[key] = value
 
-    current['attributes'] = attributes
+    current[ATTRIBUTE_FIELD] = attributes
 
     # todo possible way to reduce redundancy:
     #  top-level attributes indexed on ES, but excluded in store source
