@@ -1,6 +1,14 @@
 import bmt
 
-biolink = bmt.Toolkit()
+BIOLINK_VERSION = "4.4.2"
+BIOLINK_MODEL_RAW_BASEURL = (
+    f"https://raw.githubusercontent.com/biolink/biolink-model/v{BIOLINK_VERSION}/"
+)
+
+biolink = bmt.Toolkit(
+    schema=f"{BIOLINK_MODEL_RAW_BASEURL}biolink-model.yaml",
+    predicate_map=f"{BIOLINK_MODEL_RAW_BASEURL}predicate_mapping.yaml",
+)
 
 def remove_single_biolink_prefix(text:str):
     if text.startswith("biolink:"):

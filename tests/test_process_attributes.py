@@ -7,8 +7,11 @@ class FakeToolkit:
     def is_qualifier(self, field):
         return field.endswith("_qualifier")
 
+    def get_element(self, field):
+        return field in {"has_affinity", "source_web_page"}
 
-sys.modules.setdefault("bmt", types.SimpleNamespace(Toolkit=lambda: FakeToolkit()))
+
+sys.modules.setdefault("bmt", types.SimpleNamespace(Toolkit=lambda **kwargs: FakeToolkit()))
 
 from hub.dataload.utils.process_attributes import process_attributes  # noqa: E402
 
@@ -74,6 +77,27 @@ class ProcessAttributesTest(unittest.TestCase):
             ],
         )
 
+    def test_prefixes_known_biolink_attribute_type_ids(self):
+        edge = {
+            "id": "edge-1",
+            "subject": "CHEBI:1",
+            "object": "NCBIGene:1",
+            "predicate": "directly_physically_interacts_with",
+            "has_affinity": [{"affinity": "10"}],
+        }
+
+        process_attributes(edge, "edges")
+
+        self.assertEqual(
+            edge["attributes"],
+            [
+                {
+                    "attribute_type_id": "biolink:has_affinity",
+                    "value": [{"affinity": "10"}],
+                }
+            ],
+        )
+
     def test_preserves_existing_attribute_objects(self):
         edge = {
             "id": "edge-1",
@@ -104,6 +128,32 @@ class ProcessAttributesTest(unittest.TestCase):
                     "attribute_type_id": "extra_note",
                     "value": "kept as an attribute",
                 },
+            ],
+        )
+
+    def test_normalizes_existing_attribute_object_type_id(self):
+        edge = {
+            "id": "edge-1",
+            "subject": "CHEBI:1",
+            "object": "NCBIGene:1",
+            "predicate": "directly_physically_interacts_with",
+            "attributes": [
+                {
+                    "attribute_type_id": "has_affinity",
+                    "value": [{"affinity": "10"}],
+                }
+            ],
+        }
+
+        process_attributes(edge, "edges")
+
+        self.assertEqual(
+            edge["attributes"],
+            [
+                {
+                    "attribute_type_id": "biolink:has_affinity",
+                    "value": [{"affinity": "10"}],
+                }
             ],
         )
 

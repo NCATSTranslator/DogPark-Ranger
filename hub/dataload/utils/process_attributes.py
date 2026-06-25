@@ -50,17 +50,36 @@ NODE_TOPLEVEL_FIELDS = DINGO_KG_NODE_TOPLEVEL_VALUES | set(
 )
 
 
+def format_attribute_type_id(attribute_type_id: str) -> str:
+    if attribute_type_id.startswith("biolink:") or ":" in attribute_type_id:
+        return attribute_type_id
+
+    if biolink.get_element(attribute_type_id):
+        return f"biolink:{attribute_type_id}"
+
+    return attribute_type_id
+
+
 def build_attribute(attribute_type_id: str, value: Any) -> dict[str, Any]:
     return {
-        ATTRIBUTE_TYPE_ID_FIELD: attribute_type_id,
+        ATTRIBUTE_TYPE_ID_FIELD: format_attribute_type_id(attribute_type_id),
         VALUE_FIELD: value,
+    }
+
+
+def normalize_attribute_object(attribute: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **attribute,
+        ATTRIBUTE_TYPE_ID_FIELD: format_attribute_type_id(
+            attribute[ATTRIBUTE_TYPE_ID_FIELD]
+        ),
     }
 
 
 def normalize_attributes(existing_attributes: Any) -> list[dict[str, Any]]:
     if isinstance(existing_attributes, dict):
         if ATTRIBUTE_TYPE_ID_FIELD in existing_attributes and VALUE_FIELD in existing_attributes:
-            return [existing_attributes]
+            return [normalize_attribute_object(existing_attributes)]
 
         return [
             build_attribute(attribute_type_id, value)
@@ -69,7 +88,7 @@ def normalize_attributes(existing_attributes: Any) -> list[dict[str, Any]]:
 
     if isinstance(existing_attributes, list):
         return [
-            item
+            normalize_attribute_object(item)
             if isinstance(item, dict)
             and ATTRIBUTE_TYPE_ID_FIELD in item
             and VALUE_FIELD in item
