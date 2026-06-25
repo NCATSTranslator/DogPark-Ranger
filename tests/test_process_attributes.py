@@ -35,6 +35,17 @@ class ProcessAttributesTest(unittest.TestCase):
         )
         self.assertNotIn("biolink:source_web_page", node)
 
+    def test_omits_empty_attributes(self):
+        node = {
+            "id": "MONDO:0000001",
+            "name": "example",
+            "category": ["biolink:Disease"],
+        }
+
+        process_attributes(node, "nodes")
+
+        self.assertNotIn("attributes", node)
+
     def test_normalizes_existing_dict_attributes(self):
         edge = {
             "id": "edge-1",

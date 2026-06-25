@@ -101,7 +101,10 @@ def process_attributes(current, entity: Entity):
         attributes.append(build_attribute(key, value))
         del current[key]
 
-    current[ATTRIBUTE_FIELD] = attributes
+    if attributes:
+        current[ATTRIBUTE_FIELD] = attributes
+    else:
+        current.pop(ATTRIBUTE_FIELD, None)
 
     # todo possible way to reduce redundancy:
     #  top-level attributes indexed on ES, but excluded in store source
