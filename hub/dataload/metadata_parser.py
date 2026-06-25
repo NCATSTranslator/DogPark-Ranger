@@ -14,48 +14,53 @@ def get_kgx_release(self):
     if generated_version is not None:
         return manifest_metadata["generated_version"]
 
-    # parse metadata location from manifest
-    metadata_urls = [
+    # parse metadata location/content from manifest
+    metadata_entries = [
         manifest_metadata.get(key)
         for key in ("release", "graph")
         if manifest_metadata.get(key) is not None
     ]
 
 
-    if metadata_urls:
-        for url in metadata_urls:
-            meta_res = self.client.get(url=url)
-            if meta_res.ok:
+    if metadata_entries:
+        for metadata_entry in metadata_entries:
+            if isinstance(metadata_entry, dict):
+                metadata = metadata_entry
+            else:
+                meta_res = self.client.get(url=metadata_entry)
+                if not meta_res.ok:
+                    continue
+
                 try:
                     metadata = meta_res.json()
                 except ValueError as e:
-                    self.logger.warning(f"Invalid JSON returned: {url}: {e}")
+                    self.logger.warning(f"Invalid JSON returned: {metadata_entry}: {e}")
                     continue
 
-                # automat
-                if "release_version" in metadata:
-                    generated_version = metadata["release_version"]
-                    self.logger.info(f"version determined automat style: {generated_version}")
-                    break
+            # automat
+            if "release_version" in metadata:
+                generated_version = metadata["release_version"]
+                self.logger.info(f"version determined automat style: {generated_version}")
+                break
 
-                # dingo
-                if "version" in metadata:
-                    generated_version = metadata["version"]
-                    self.logger.info(f"version determined automat style: {generated_version}")
-                    break
+            # dingo
+            if "version" in metadata:
+                generated_version = metadata["version"]
+                self.logger.info(f"version determined automat style: {generated_version}")
+                break
 
-                # legacy dingo
-                if "transform" in metadata:
-                    transform_info = metadata['transform']
-                    if isinstance(transform_info, dict):
-                        source_version = transform_info.get("source_version", None)
-                        transform_version = transform_info.get("transform_version", None)
-                        if source_version and transform_version:
-                            generated_version = f"{source_version}-{transform_version}"
-                            self.logger.info(f"version determined DINGO style: {generated_version}")
-                            break
-                        else:
-                            raise ValueError(f"failed to parse version info DINGO style, source_version={source_version}, transform_version={transform_version}")
+            # legacy dingo
+            if "transform" in metadata:
+                transform_info = metadata['transform']
+                if isinstance(transform_info, dict):
+                    source_version = transform_info.get("source_version", None)
+                    transform_version = transform_info.get("transform_version", None)
+                    if source_version and transform_version:
+                        generated_version = f"{source_version}-{transform_version}"
+                        self.logger.info(f"version determined DINGO style: {generated_version}")
+                        break
+                    else:
+                        raise ValueError(f"failed to parse version info DINGO style, source_version={source_version}, transform_version={transform_version}")
 
     if generated_version is not None:
         manifest_metadata['generated_version'] = generated_version
