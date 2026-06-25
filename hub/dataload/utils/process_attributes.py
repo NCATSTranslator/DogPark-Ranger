@@ -8,6 +8,8 @@ from hub.dataload.utils.postprocessing import biolink
 
 Entity = Literal["nodes", "edges"]
 ATTRIBUTE_FIELD = "attributes"
+ATTRIBUTE_TYPE_ID_FIELD = "attribute_type_id"
+VALUE_FIELD = "value"
 
 
 DINGO_KG_EDGE_TOPLEVEL_VALUES = {
@@ -48,12 +50,40 @@ NODE_TOPLEVEL_FIELDS = DINGO_KG_NODE_TOPLEVEL_VALUES | set(
 )
 
 
+def build_attribute(attribute_type_id: str, value: Any) -> dict[str, Any]:
+    return {
+        ATTRIBUTE_TYPE_ID_FIELD: attribute_type_id,
+        VALUE_FIELD: value,
+    }
+
+
+def normalize_attributes(existing_attributes: Any) -> list[dict[str, Any]]:
+    if isinstance(existing_attributes, dict):
+        if ATTRIBUTE_TYPE_ID_FIELD in existing_attributes and VALUE_FIELD in existing_attributes:
+            return [existing_attributes]
+
+        return [
+            build_attribute(attribute_type_id, value)
+            for attribute_type_id, value in existing_attributes.items()
+        ]
+
+    if isinstance(existing_attributes, list):
+        return [
+            item
+            if isinstance(item, dict)
+            and ATTRIBUTE_TYPE_ID_FIELD in item
+            and VALUE_FIELD in item
+            else build_attribute(ATTRIBUTE_FIELD, item)
+            for item in existing_attributes
+        ]
+
+    return []
+
+
 def process_attributes(current, entity: Entity):
-    """Move unmapped, non-qualifier fields into a source-only attributes object."""
+    """Move unmapped, non-qualifier fields into source-only attribute objects."""
     existing_attributes = current.get(ATTRIBUTE_FIELD)
-    attributes: dict[str, Any] = (
-        dict(existing_attributes) if isinstance(existing_attributes, dict) else {}
-    )
+    attributes = normalize_attributes(existing_attributes)
     if entity == "edges":
         top_level_fields = EDGE_TOPLEVEL_FIELDS
     elif entity == "nodes":
@@ -68,7 +98,7 @@ def process_attributes(current, entity: Entity):
             or biolink.is_qualifier(key)
         ):
             continue
-        attributes[key] = value
+        attributes.append(build_attribute(key, value))
         del current[key]
 
     current[ATTRIBUTE_FIELD] = attributes
