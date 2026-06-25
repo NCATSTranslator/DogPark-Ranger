@@ -17,7 +17,7 @@ from hub.dataload.utils.process_attributes import process_attributes  # noqa: E4
 
 
 class ProcessAttributesTest(unittest.TestCase):
-    def test_moves_unmapped_fields_to_attribute_objects(self):
+    def test_copies_unmapped_fields_to_attribute_objects(self):
         node = {
             "id": "MONDO:0000001",
             "name": "example",
@@ -36,7 +36,10 @@ class ProcessAttributesTest(unittest.TestCase):
                 }
             ],
         )
-        self.assertNotIn("biolink:source_web_page", node)
+        self.assertEqual(
+            node["biolink:source_web_page"],
+            "https://example.org/source",
+        )
 
     def test_omits_empty_attributes(self):
         node = {
@@ -76,6 +79,7 @@ class ProcessAttributesTest(unittest.TestCase):
                 },
             ],
         )
+        self.assertEqual(edge["custom_score"], 0.42)
 
     def test_prefixes_known_biolink_attribute_type_ids(self):
         edge = {
@@ -97,6 +101,7 @@ class ProcessAttributesTest(unittest.TestCase):
                 }
             ],
         )
+        self.assertEqual(edge["has_affinity"], [{"affinity": "10"}])
 
     def test_preserves_existing_attribute_objects(self):
         edge = {
@@ -130,6 +135,7 @@ class ProcessAttributesTest(unittest.TestCase):
                 },
             ],
         )
+        self.assertEqual(edge["extra_note"], "kept as an attribute")
 
     def test_normalizes_existing_attribute_object_type_id(self):
         edge = {

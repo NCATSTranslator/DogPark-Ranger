@@ -100,7 +100,7 @@ def normalize_attributes(existing_attributes: Any) -> list[dict[str, Any]]:
 
 
 def process_attributes(current, entity: Entity):
-    """Move unmapped, non-qualifier fields into source-only attribute objects."""
+    """Copy unmapped, non-qualifier fields into source-only attribute objects."""
     existing_attributes = current.get(ATTRIBUTE_FIELD)
     attributes = normalize_attributes(existing_attributes)
     if entity == "edges":
@@ -118,7 +118,6 @@ def process_attributes(current, entity: Entity):
         ):
             continue
         attributes.append(build_attribute(key, value))
-        del current[key]
 
     if attributes:
         current[ATTRIBUTE_FIELD] = attributes
