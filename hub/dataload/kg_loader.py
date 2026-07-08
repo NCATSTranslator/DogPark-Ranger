@@ -4,9 +4,6 @@ from hub.dataload.compressed_parser import load_from_tar
 from hub.dataload.info_parser import get_adj_list, encapsule, split_n_chunks, to_key_value_pair
 from hub.dataload.utils.pipeline import apply_processors
 from hub.dataload.utils.process_attributes import process_attributes
-from hub.dataload.utils.process_category import process_category_list
-from hub.dataload.utils.process_node_fields import process_chembl_black_box_warning
-from hub.dataload.utils.process_predicate import process_predicate
 from hub.dataload.utils.process_qualifiers import process_qualifiers
 from hub.dataload.utils.process_sources import process_sources
 
@@ -27,25 +24,26 @@ class ParserResult:
             yield doc["_id"], doc
 
 
-# todo centralize Gandalf transformation here
+GANDALF_NORMALIZATION_STEPS = [
+    "nodes normalized to id/name/categories/attributes",
+    "edges normalized to subject/object/predicate/id/sources/qualifiers/attributes",
+    "edge sources normalized and dogpark-tier0 aggregator prepended",
+    "edge qualifier fields copied to TRAPI qualifiers list",
+    "node/edge non-core fields copied to TRAPI attributes list",
+]
 
 def node_processor(node):
     processors = [
-        process_chembl_black_box_warning,
         partial(process_attributes, entity="nodes"),
-        process_category_list
     ]
     return apply_processors(processors, node)
 
 
-def edge_processor(predicate_cache: dict, unique_qualifier_set: set, edge):
+def edge_processor(unique_qualifier_set: set, edge):
     processors = [
-        process_category_list,
         partial(process_qualifiers, unique_qualifier_set=unique_qualifier_set),
         process_sources,
         partial(process_attributes, entity="edges"),
-        # we need cache to do faster ancestor look up
-        partial(process_predicate, predicate_cache=predicate_cache)
     ]
     return apply_processors(processors, edge)
 
@@ -57,7 +55,6 @@ def parser(*args, **kwargs):
     if entity is None:
         raise ValueError("No entity specified")
 
-    predicate_cache = {}
     if unique_qualifier_set is None:
         unique_qualifier_set = set()
 
@@ -66,7 +63,6 @@ def parser(*args, **kwargs):
         if entity == "nodes"
         else partial(
             edge_processor,
-            predicate_cache,  # initialize predicate look-up cache
             unique_qualifier_set,
         )
     )
@@ -76,7 +72,11 @@ def parser(*args, **kwargs):
         kwargs['gen_seq'] = False
 
     docs = map(processor_pipeline, load_from_tar(*args, **kwargs))
+    if entity == "nodes":
+        docs = (doc for doc in docs if doc.get("id"))
+
     metadata = {}
+    metadata["gandalf_normalization"] = GANDALF_NORMALIZATION_STEPS
 
     if entity == "edges":
         metadata["qualifier_fields"] = unique_qualifier_set
