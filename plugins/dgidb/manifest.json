@@ -12,7 +12,8 @@
             "https://kgx-storage.ci.transltr.io/releases/dgidb/latest/dgidb.tar.zst"
         ],
         "uncompress": false,
-        "release": "hub.dataload.metadata_parser:get_kgx_release"
+        "release": "hub.dataload.metadata_parser:get_kgx_release",
+        "schedule": "0 6 * * *"
     },
     "uploaders": [
         {
