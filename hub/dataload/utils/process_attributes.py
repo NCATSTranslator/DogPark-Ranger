@@ -7,6 +7,7 @@ Entity = Literal["nodes", "edges"]
 
 _CORE_EDGE_FIELDS = {
     "id",
+    "_id",
     "category",
     "subject",
     "object",
@@ -15,7 +16,7 @@ _CORE_EDGE_FIELDS = {
     "primary_knowledge_source",
     "aggregator_knowledge_source",
 }
-_CORE_NODE_FIELDS = {"id", "name", "category"}
+_CORE_NODE_FIELDS = {"id", "_id", "name", "category"}
 
 
 def _extract_edge_attributes(edge):
