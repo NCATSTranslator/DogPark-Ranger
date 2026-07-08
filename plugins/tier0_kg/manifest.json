@@ -19,7 +19,8 @@
             "name": "tier0_kg_nodes",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
-                "entity": "nodes"
+                "entity": "nodes",
+                "is_tier0": true
             },
             "on_duplicates": "error",
             "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping",
@@ -30,6 +31,7 @@
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges",
+                "is_tier0": true,
                 "gen_seq": false
             },
             "on_duplicates": "error",

@@ -2,6 +2,7 @@ from functools import partial
 
 from hub.dataload.compressed_parser import load_from_tar
 from hub.dataload.info_parser import get_adj_list, encapsule, split_n_chunks, to_key_value_pair
+from hub.dataload.kgx_normalization import normalize_kgx_edge
 from hub.dataload.utils.pipeline import apply_processors
 from hub.dataload.utils.process_attributes import process_attributes
 from hub.dataload.utils.process_category import process_category_list
@@ -24,7 +25,7 @@ class ParserResult:
 
     def items(self):
         for doc in self:
-            yield doc["_id"], doc
+            yield doc.get("_id", doc["id"]), doc
 
 
 # todo centralize Gandalf transformation here
@@ -32,7 +33,7 @@ class ParserResult:
 def node_processor(node):
     processors = [
         process_chembl_black_box_warning,
-        partial(process_attributes, entity="nodes"),
+        # partial(process_attributes, entity="nodes"),
         process_category_list
     ]
     return apply_processors(processors, node)
@@ -43,7 +44,7 @@ def edge_processor(predicate_cache: dict, unique_qualifier_set: set, edge):
         process_category_list,
         partial(process_qualifiers, unique_qualifier_set=unique_qualifier_set),
         process_sources,
-        partial(process_attributes, entity="edges"),
+        # partial(process_attributes, entity="edges"),
         # we need cache to do faster ancestor look up
         partial(process_predicate, predicate_cache=predicate_cache)
     ]
@@ -52,24 +53,34 @@ def edge_processor(predicate_cache: dict, unique_qualifier_set: set, edge):
 
 def parser(*args, **kwargs):
     entity = kwargs.get('entity')
+    # to invoke special tier0 parser
+    is_tier0 = kwargs.get('is_tier0', False)
+
     unique_qualifier_set = kwargs.pop("qualifier_set", None)
 
     if entity is None:
         raise ValueError("No entity specified")
 
-    predicate_cache = {}
-    if unique_qualifier_set is None:
-        unique_qualifier_set = set()
-
-    processor_pipeline = (
-        node_processor
-        if entity == "nodes"
-        else partial(
-            edge_processor,
-            predicate_cache,  # initialize predicate look-up cache
-            unique_qualifier_set,
+    if is_tier0:
+        processor_pipeline = (
+            normalize_kgx_node
+            if entity == "nodes"
+            else normalize_kgx_edge
         )
-    )
+    else:
+        predicate_cache = {}
+        if unique_qualifier_set is None:
+            unique_qualifier_set = set()
+
+        processor_pipeline = (
+            node_processor
+            if entity == "nodes"
+            else partial(
+                edge_processor,
+                predicate_cache,  # initialize predicate look-up cache
+                unique_qualifier_set,
+            )
+        )
 
     # disable sequence generation by default
     if entity == "nodes" and kwargs.get('gen_seq', None) is None:
@@ -80,6 +91,9 @@ def parser(*args, **kwargs):
 
     if entity == "edges":
         metadata["qualifier_fields"] = unique_qualifier_set
+
+    if entity == "nodes" and is_tier0:
+        metadata["gandalf_normalization"] = GANDALF_NORMALIZATION_STEPS
 
     return ParserResult(docs, metadata)
 
