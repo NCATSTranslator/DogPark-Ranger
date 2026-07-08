@@ -1,78 +1,80 @@
+from typing import Any
+
 from typing_extensions import Literal
 
-from hub.dataload.utils.process_qualifiers import get_qualifier_fields
+from hub.dataload.mapping import kg_mapping
+from hub.dataload.utils.postprocessing import biolink
 
 
 Entity = Literal["nodes", "edges"]
+ATTRIBUTE_FIELD = "attributes"
 
-_CORE_EDGE_FIELDS = {
+
+DINGO_KG_EDGE_TOPLEVEL_VALUES = {
+    "binding",
+    "category",
+    "direction",
+    "predicate",
+    "predicate_ancestors",
+    "node",
+    "sources",
+    "source_inforeses",
     "id",
     "_id",
-    "category",
     "subject",
     "object",
-    "predicate",
-    "sources",
-    "primary_knowledge_source",
-    "aggregator_knowledge_source",
+    "_index",
+    "seq_",
+    "negated",  # Should only ever show up as false, field to be removed in future
+    "eid",
 }
-_CORE_NODE_FIELDS = {"id", "_id", "name", "category"}
 
 
-def _extract_edge_attributes(edge):
-    qualifier_fields = get_qualifier_fields()
-    attributes = []
-    for field, value in edge.items():
-        if (
-            field in _CORE_EDGE_FIELDS
-            or field in qualifier_fields
-            or field == "qualifiers"
-        ):
-            continue
-        attributes.append(
-            {
-                "attribute_type_id": f"biolink:{field}",
-                "value": value,
-                "original_attribute_name": field,
-            }
-        )
-    return attributes
+DINGO_KG_NODE_TOPLEVEL_VALUES = {
+    "binding",
+    "id",
+    "_id",
+    "name",
+    "edges",
+    "category",
+}
 
 
-def _extract_node_attributes(node):
-    attributes = []
-    for field, value in node.items():
-        if field in _CORE_NODE_FIELDS:
-            continue
-        attributes.append(
-            {
-                "attribute_type_id": "biolink:Attribute",
-                "value": value,
-                "original_attribute_name": field,
-            }
-        )
-    return attributes
+EDGE_TOPLEVEL_FIELDS = DINGO_KG_EDGE_TOPLEVEL_VALUES | set(
+    kg_mapping.merged_edges_mapping(None)
+)
+NODE_TOPLEVEL_FIELDS = DINGO_KG_NODE_TOPLEVEL_VALUES | set(
+    kg_mapping.nodes_mapping(None)
+)
 
 
 def process_attributes(current, entity: Entity):
-    """Return Gandalf's normalized KGX node/edge document shape."""
+    """Move unmapped, non-qualifier fields into a source-only attributes object."""
+    existing_attributes = current.get(ATTRIBUTE_FIELD)
+    attributes: dict[str, Any] = (
+        dict(existing_attributes) if isinstance(existing_attributes, dict) else {}
+    )
     if entity == "edges":
-        return {
-            "subject": current["subject"],
-            "object": current["object"],
-            "predicate": current["predicate"],
-            "id": current.get("id"),
-            "sources": current["sources"],
-            "qualifiers": current["qualifiers"],
-            "attributes": _extract_edge_attributes(current),
-        }
+        top_level_fields = EDGE_TOPLEVEL_FIELDS
+    elif entity == "nodes":
+        top_level_fields = NODE_TOPLEVEL_FIELDS
+    else:
+        raise ValueError(f"Unknown entity: {entity!r}")
 
-    if entity == "nodes":
-        return {
-            "id": current.get("id"),
-            "name": current.get("name"),
-            "categories": current.get("category", []),
-            "attributes": _extract_node_attributes(current),
-        }
+    for key, value in list(current.items()):
+        if (
+            key == ATTRIBUTE_FIELD
+            or key in top_level_fields
+            or biolink.is_qualifier(key)
+        ):
+            continue
+        attributes[key] = value
+        del current[key]
 
-    raise ValueError(f"Unknown entity: {entity!r}")
+    current[ATTRIBUTE_FIELD] = attributes
+
+    # todo possible way to reduce redundancy:
+    #  top-level attributes indexed on ES, but excluded in store source
+    #  (script/runtime field, autogen at indexing time)
+
+    return current

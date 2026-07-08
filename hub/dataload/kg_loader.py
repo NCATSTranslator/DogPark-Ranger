@@ -2,10 +2,7 @@ from functools import partial
 
 from hub.dataload.compressed_parser import load_from_tar
 from hub.dataload.info_parser import get_adj_list, encapsule, split_n_chunks, to_key_value_pair
-from hub.dataload.utils.pipeline import apply_processors
-from hub.dataload.utils.process_attributes import process_attributes
-from hub.dataload.utils.process_qualifiers import process_qualifiers
-from hub.dataload.utils.process_sources import process_sources
+from hub.dataload.kgx_normalization import normalize_kgx_edge, normalize_kgx_node
 
 
 class ParserResult:
@@ -21,7 +18,7 @@ class ParserResult:
 
     def items(self):
         for doc in self:
-            yield doc["_id"], doc
+            yield doc.get("_id", doc["id"]), doc
 
 
 GANDALF_NORMALIZATION_STEPS = [
@@ -33,19 +30,11 @@ GANDALF_NORMALIZATION_STEPS = [
 ]
 
 def node_processor(node):
-    processors = [
-        partial(process_attributes, entity="nodes"),
-    ]
-    return apply_processors(processors, node)
+    return normalize_kgx_node(node)
 
 
 def edge_processor(unique_qualifier_set: set, edge):
-    processors = [
-        partial(process_qualifiers, unique_qualifier_set=unique_qualifier_set),
-        process_sources,
-        partial(process_attributes, entity="edges"),
-    ]
-    return apply_processors(processors, edge)
+    return normalize_kgx_edge(edge, unique_qualifier_set)
 
 
 def parser(*args, **kwargs):
