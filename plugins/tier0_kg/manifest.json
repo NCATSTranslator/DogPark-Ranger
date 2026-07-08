@@ -9,7 +9,7 @@
     },
     "dumper": {
         "data_url": [
-            "https://kgx-storage.ci.transltr.io/releases/translator_kg/latest/translator_kg.tar.zst"
+            "https://kgx-storage.ci.transltr.io/releases/translator_kg/2026_06_21/translator_kg.tar.zst"
         ],
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_kgx_release"
