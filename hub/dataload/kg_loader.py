@@ -10,7 +10,7 @@ from hub.dataload.utils.process_node_fields import process_chembl_black_box_warn
 from hub.dataload.utils.process_predicate import process_predicate
 from hub.dataload.utils.process_qualifiers import process_qualifiers
 from hub.dataload.utils.process_sources import process_sources
-
+from hub.dataload.kgx_normalization import normalize_kgx_node, normalize_kgx_edge
 
 class ParserResult:
     def __init__(self, docs, metadata=None):
