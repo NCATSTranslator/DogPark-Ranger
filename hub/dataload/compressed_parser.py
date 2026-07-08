@@ -36,7 +36,14 @@ def read_compressed(
                 yield doc
 
 
-def load_from_tar(data_folder: Union[str, pathlib.Path], entity: Literal['edges', 'nodes'], file_name:Optional[str]=None, gen_id=True, gen_seq=True):
+def load_from_tar(
+        data_folder: Union[str, pathlib.Path],
+        entity: Literal['edges', 'nodes'],
+        file_name:Optional[str]=None,
+        gen_id=True,
+        gen_seq=True,
+        **kwargs,
+):
     """ Stream data from given JSONL file """
     data_folder = pathlib.Path(data_folder).resolve().absolute()
 
