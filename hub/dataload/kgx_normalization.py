@@ -80,6 +80,15 @@ _FALLBACK_QUALIFIER_FIELDS = {
     "temporal_interval_qualifier",
 }
 
+
+GANDALF_NORMALIZATION_STEPS = [
+    "nodes normalized to id/name/categories/attributes",
+    "edges normalized to subject/object/predicate/id/sources/qualifiers/attributes",
+    "edge sources normalized and dogpark-tier0 aggregator prepended",
+    "edge qualifier fields copied to TRAPI qualifiers list",
+    "node/edge non-core fields copied to TRAPI attributes list",
+]
+
 logger = logging.getLogger(__name__)
 _bmt = None
 _qualifier_fields = None
