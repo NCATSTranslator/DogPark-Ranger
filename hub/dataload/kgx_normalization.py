@@ -156,14 +156,16 @@ def _extract_sources(raw):
                 )
                 previous_source = aggregator_source
     else:
-        sources = [
-            {
+        sources = []
+        for source in raw_sources:
+            src = {
                 "resource_id": source["resource_id"],
                 "resource_role": source["resource_role"],
                 "upstream_resource_ids": source.get("upstream_resource_ids", []),
             }
-            for source in raw_sources
-        ]
+            if source.get("source_record_urls"):
+                src["source_record_urls"] = source["source_record_urls"]
+            sources.append(src)
 
     all_upstream = {uid for source in sources for uid in source["upstream_resource_ids"]}
     top_ids = [
