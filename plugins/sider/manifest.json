@@ -11,6 +11,7 @@
         "data_url": [
             "https://kgx-storage.ci.transltr.io/releases/sider/latest/sider.tar.zst"
         ],
+        "class": "hub.dataload.kgDumper.KgDumper",
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_kgx_release",
         "schedule": "0 6 * * *"

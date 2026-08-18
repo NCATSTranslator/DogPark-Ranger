@@ -10,6 +10,7 @@
         "data_url": [
             "https://kgx-storage.ci.transltr.io/releases/translator_kg/2026_06_21/translator_kg.tar.zst"
         ],
+        "class": "hub.dataload.kgDumper.KgDumper",
         "uncompress": false,
         "release": "hub.dataload.metadata_parser:get_kgx_release",
         "schedule": "0 6 * * *"
