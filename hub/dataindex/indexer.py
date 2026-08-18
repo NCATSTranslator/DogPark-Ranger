@@ -24,6 +24,10 @@ from biothings.utils import mongo
 from biothings.utils.mongo import DatabaseClient, id_feeder
 from biothings.utils.common import iter_n
 
+# the documents KgDumper captures are source-level (identical for nodes and edges),
+# so they are exactly the ones elevated out of the per-source _meta block
+from hub.dataload.kgDumper import KGX_METADATA_KEYS
+
 try:
     from biothings.utils.mongo import doc_feeder
 except ImportError:
@@ -149,7 +153,7 @@ class KGXIndexer(Indexer):
                 meta_src[key] = value[self.mongo_edge_collection_name]
                 edge_scoped_keys.append(key)
 
-        for _key in ["graph", "release", *edge_scoped_keys]:
+        for _key in [*KGX_METADATA_KEYS, *edge_scoped_keys]:
             data = meta_src.pop(_key, None)
             if data is not None:
                 meta[_key] = data
