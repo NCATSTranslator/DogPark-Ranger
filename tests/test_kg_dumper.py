@@ -73,7 +73,9 @@ def make_release_dumper(src_meta, payloads=None, head_responses=None, current_re
     return dumper
 
 
-class FakeDumper:
+class FakeDumper(KgDumper):
+    """Release-check stand-in: metadata is declared, so nothing is inferred."""
+
     __metadata__ = {"src_meta": {"release": RELEASE_URL}}
     logger = logging.getLogger("test")
     src_name = "example"
@@ -326,6 +328,60 @@ class KgxReleaseTest(unittest.TestCase):
             dumper.src_doc[KGX_METADATA_FIELD],
             {"graph": {"nodes": 12}, "release": {"release_version": "2026_06_21"}},
         )
+
+
+class KgxMetadataResolutionTest(unittest.TestCase):
+    """Manifests declare the metadata documents relative to the archive URL."""
+
+    ARCHIVE_URL = "https://kgx-storage.example.org/releases/cohd/latest/cohd.tar.zst"
+    RESOLVED_GRAPH_URL = "https://kgx-storage.example.org/releases/cohd/latest/graph-metadata.json"
+    RESOLVED_RELEASE_URL = "https://kgx-storage.example.org/releases/cohd/latest-release.json"
+
+    def test_resolves_relative_declarations_against_the_archive(self):
+        dumper = make_release_dumper(
+            {"graph": "graph-metadata.json", "release": "../latest-release.json"},
+            src_urls=[self.ARCHIVE_URL],
+        )
+
+        self.assertEqual(
+            dumper.kgx_metadata_sources(),
+            {"graph": self.RESOLVED_GRAPH_URL, "release": self.RESOLVED_RELEASE_URL},
+        )
+
+    def test_reads_release_from_the_resolved_url(self):
+        dumper = make_release_dumper(
+            {"release": "../latest-release.json"},
+            {self.RESOLVED_RELEASE_URL: {"release_version": "2026_06_21"}},
+            src_urls=[self.ARCHIVE_URL],
+        )
+
+        self.assertEqual(dumper.get_kgx_release(), "2026_06_21")
+        self.assertEqual(dumper.client.urls, [self.RESOLVED_RELEASE_URL])
+
+    def test_passes_absolute_declarations_through(self):
+        dumper = make_release_dumper({"graph": GRAPH_URL}, src_urls=[self.ARCHIVE_URL])
+
+        self.assertEqual(dumper.kgx_metadata_sources(), {"graph": GRAPH_URL})
+
+    def test_passes_inlined_documents_through(self):
+        dumper = make_release_dumper({"graph": {"version": "2026_06_21"}}, src_urls=[self.ARCHIVE_URL])
+
+        self.assertEqual(dumper.kgx_metadata_sources(), {"graph": {"version": "2026_06_21"}})
+
+    def test_resolves_inside_a_pinned_release_directory(self):
+        """A pinned source declares the same relative graph path and no release."""
+        pinned_archive = "https://kgx-storage.example.org/releases/translator_kg/2026_06_21/translator_kg.tar.zst"
+        dumper = make_release_dumper({"graph": "graph-metadata.json"}, src_urls=[pinned_archive])
+
+        self.assertEqual(
+            dumper.kgx_metadata_sources(),
+            {"graph": "https://kgx-storage.example.org/releases/translator_kg/2026_06_21/graph-metadata.json"},
+        )
+
+    def test_declares_nothing_when_no_kgx_keys_are_present(self):
+        dumper = make_release_dumper({"license": "CC0"}, src_urls=[self.ARCHIVE_URL])
+
+        self.assertEqual(dumper.kgx_metadata_sources(), {})
 
 
 if __name__ == "__main__":

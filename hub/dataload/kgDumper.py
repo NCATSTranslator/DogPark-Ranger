@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urljoin
 
 from biothings.hub.dataload.dumper import LastModifiedHTTPDumper
 
@@ -21,8 +22,9 @@ class KgDumper(LastModifiedHTTPDumper):
     NOT declare a "release" entry -- pointing "class" at anything else silently
     falls back to the SDK's Last-Modified semantics instead.
 
-    The declared metadata documents are fetched once per dump cycle and reused
-    for both the release check and the src_dump record.
+    The metadata documents are declared in the manifest's "__metadata__" section,
+    relative to the archive URL. They are fetched once per dump cycle and reused for
+    both the release check and the src_dump record.
     """
 
     # replaced with a per-cycle dict on first use; see load_kgx_metadata()
@@ -33,9 +35,8 @@ class KgDumper(LastModifiedHTTPDumper):
             self.logger.warning("Skipping %s because its release could not be checked", remotefile)
             return False
 
-        manifest_metadata = getattr(self.__class__, "__metadata__", {}).get("src_meta", {})
-        has_declared_release = any(manifest_metadata.get(key) is not None for key in ("release", "graph"))
-        if not has_declared_release:
+        sources = self.kgx_metadata_sources()
+        if not any(sources.get(key) is not None for key in KGX_METADATA_KEYS):
             return super().remote_is_better(remotefile, localfile)
 
         if localfile is None or not Path(localfile).is_file():
@@ -65,6 +66,33 @@ class KgDumper(LastModifiedHTTPDumper):
         self._kgx_metadata = {}
         self.release = self.get_kgx_release()
 
+    def kgx_metadata_sources(self):
+        """Where to read each KGX metadata document from, keyed by KGX_METADATA_KEYS.
+
+        A value is a URL to fetch or an already-inlined document; a key the manifest
+        does not declare is absent, which is how a source says it publishes no such
+        document.
+        """
+        declared = getattr(self.__class__, "__metadata__", {}).get("src_meta", {})
+        return {
+            key: self.resolve_kgx_metadata_url(declared[key]) for key in KGX_METADATA_KEYS if key in declared
+        }
+
+    def resolve_kgx_metadata_url(self, entry):
+        """Resolve a declared metadata URL against the archive it belongs to.
+
+        Manifests declare these relative to "data_url" -- "graph-metadata.json" for
+        the document beside the archive, "../latest-release.json" for the one a level
+        up -- so the store location is written once and a source pinned to a dated
+        release directory needs no special casing. Absolute URLs pass through, as do
+        documents inlined in the manifest.
+        """
+        urls = getattr(self.__class__, "SRC_URLS", None) or []
+        if not isinstance(entry, str) or not urls:
+            return entry
+        # multiple archives are assumed to sit together; the first one sets the base
+        return urljoin(urls[0], entry)
+
     def load_kgx_metadata(self, meta_key):
         """Return a declared KGX metadata document, fetching it at most once per cycle.
 
@@ -81,7 +109,7 @@ class KgDumper(LastModifiedHTTPDumper):
         if meta_key in self._kgx_metadata:
             return self._kgx_metadata[meta_key]
 
-        entry = getattr(self.__class__, "__metadata__", {}).get("src_meta", {}).get(meta_key)
+        entry = self.kgx_metadata_sources().get(meta_key)
         if isinstance(entry, dict):
             document = entry  # already inlined in the manifest
         elif isinstance(entry, str):
@@ -115,9 +143,9 @@ class KgDumper(LastModifiedHTTPDumper):
         """Determine the current KGX release from the declared metadata."""
         self._release_check_failed = False
 
-        manifest_metadata = getattr(self.__class__, "__metadata__", {}).get("src_meta", {})
+        sources = self.kgx_metadata_sources()
         metadata_kind = next(
-            (key for key in KGX_RELEASE_PRECEDENCE if manifest_metadata.get(key) is not None),
+            (key for key in KGX_RELEASE_PRECEDENCE if sources.get(key) is not None),
             None,
         )
         if metadata_kind is None:

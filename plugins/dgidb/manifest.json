@@ -4,8 +4,8 @@
         "jsonlines"
     ],
     "__metadata__": {
-        "graph": "https://kgx-storage.ci.transltr.io/releases/dgidb/latest/graph-metadata.json",
-        "release": "https://kgx-storage.ci.transltr.io/releases/dgidb/latest-release.json"
+        "graph": "graph-metadata.json",
+        "release": "../latest-release.json"
     },
     "dumper": {
         "data_url": [

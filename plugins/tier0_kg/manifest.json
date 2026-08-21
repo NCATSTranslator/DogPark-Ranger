@@ -4,7 +4,7 @@
         "jsonlines"
     ],
     "__metadata__": {
-        "graph": "https://kgx-storage.ci.transltr.io/releases/translator_kg/2026_06_21/graph-metadata.json"
+        "graph": "graph-metadata.json"
     },
     "dumper": {
         "data_url": [
