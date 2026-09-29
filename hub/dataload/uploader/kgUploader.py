@@ -58,7 +58,6 @@ class KGXUploader(BaseSourceUploader):
         pinfo = self.get_pinfo()
         pinfo["step"] = "update_data"
 
-        self.unprepare()
         job = await job_manager.defer_to_process(
             pinfo,
             partial(
