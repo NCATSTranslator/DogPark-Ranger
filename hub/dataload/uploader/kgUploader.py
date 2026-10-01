@@ -1,12 +1,11 @@
 import logging as loggingmod
-import json
 from functools import partial
 
-import requests
 from biothings.hub.dataload.uploader import BaseSourceUploader
 from typing_extensions import override
 
 import config
+from hub.dataload.kgDumper import KGX_METADATA_FIELD, KGX_METADATA_KEYS
 
 logging = config.logger
 
@@ -83,26 +82,55 @@ class KGXUploader(BaseSourceUploader):
 
         return result["count"]
 
+    @classmethod
+    def get_manifest_src_meta(cls):
+        """Return the manifest's src_meta, before any expansion.
+
+        generate_doc_src_master() writes its expanded result back to __metadata__,
+        so the unexpanded manifest values are kept aside here. Without this, the
+        first expansion would freeze src_meta for the life of the hub process and
+        later releases would never be picked up.
+        """
+        if "_manifest_src_meta" not in cls.__dict__:
+            cls._manifest_src_meta = dict(getattr(cls, "__metadata__", {}).get("src_meta", {}))
+        return cls._manifest_src_meta
+
+    def resolve_manifest_metadata(self, meta_src):
+        """Replace the manifest's metadata URLs with the documents KgDumper captured.
+
+        The captured documents describe the release that is actually in the
+        collection. There is no fetch fallback: manifests declare these URLs
+        relative to the dumper's "data_url", which generated uploaders never see,
+        so only the dumper can resolve them. A source without captured metadata
+        gets KgDumper.backfill_kgx_metadata() on its next release check; until
+        then the key is dropped rather than published as an unresolved path.
+        """
+        cached = (self.src_doc or {}).get(KGX_METADATA_FIELD) or {}
+
+        for meta_key in KGX_METADATA_KEYS:
+            meta_loc = meta_src.get(meta_key)
+            if not isinstance(meta_loc, str):
+                continue
+
+            resolved = cached.get(meta_key)
+            if isinstance(resolved, dict):
+                meta_src[meta_key] = resolved
+                continue
+
+            logging.warning(
+                f"No dump-time {meta_key} metadata for {self.fullname}; omitting it from src_meta "
+                f"until the next dump check captures it"
+            )
+            del meta_src[meta_key]
+
     @override
     def generate_doc_src_master(self):
         """Parse metadata from graph/release json files provided with KG datasets"""
 
         # modify and  inject __metadata__ here
         if hasattr(self.__class__, "__metadata__"):
-            meta = self.__class__.__metadata__
-            meta_src = dict(meta.get("src_meta", {}))
-            try:
-                for meta_key in ("graph", "release"):
-                    meta_loc = meta_src.get(meta_key)
-                    if isinstance(meta_loc, str):
-                        meta_src[meta_key] = requests.get(meta_loc).json()
-            except KeyError as e:
-                logging.info(f"Can't locate metadata file: {e}. Injection bypassed.")
-            except requests.exceptions.RequestException as e:
-                logging.info(f"Error getting remote metadata: {e}. Injection bypassed.")
-            except (json.JSONDecodeError, ValueError) as e:
-                logging.info(f"Error parsing remote metadata {e}. Injection bypassed.")
-
+            meta_src = dict(self.get_manifest_src_meta())
+            self.resolve_manifest_metadata(meta_src)
             meta_src.update(self.get_parser_metadata())
             self.__class__.__metadata__ = {"src_meta": meta_src}
 

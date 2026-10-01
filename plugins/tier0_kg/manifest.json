@@ -4,22 +4,23 @@
         "jsonlines"
     ],
     "__metadata__": {
-        "graph": "https://kgx-storage.ci.transltr.io/releases/translator_kg/latest/graph-metadata.json",
-        "release": "https://kgx-storage.ci.transltr.io/releases/translator_kg/latest-release.json"
+        "graph": "graph-metadata.json"
     },
     "dumper": {
         "data_url": [
-            "https://kgx-storage.ci.transltr.io/releases/translator_kg/latest/translator_kg.tar.zst"
+            "https://kgx-storage.ci.transltr.io/releases/translator_kg/2026_06_21/translator_kg.tar.zst"
         ],
+        "class": "hub.dataload.kgDumper.KgDumper",
         "uncompress": false,
-        "release": "hub.dataload.metadata_parser:get_kgx_release"
+        "schedule": "0 6 * * *"
     },
     "uploaders": [
         {
             "name": "tier0_kg_nodes",
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
-                "entity": "nodes"
+                "entity": "nodes",
+                "is_tier0": true
             },
             "on_duplicates": "error",
             "mapping": "hub.dataload.mapping.kg_mapping:nodes_mapping",
@@ -30,6 +31,7 @@
             "parser": "hub.dataload.kg_loader:parser",
             "parser_kwargs": {
                 "entity": "edges",
+                "is_tier0": true,
                 "gen_seq": false
             },
             "on_duplicates": "error",

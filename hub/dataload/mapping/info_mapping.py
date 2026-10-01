@@ -5,7 +5,7 @@ def info_mapping(cls):
             "type": "integer"
         },
         "value": {
-            "type": "keyword",
+            "type": "text",
             "index": False
         }
     })
