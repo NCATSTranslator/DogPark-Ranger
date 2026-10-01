@@ -3,8 +3,6 @@ import types
 import unittest
 from unittest import mock
 
-import requests
-
 
 class FakeBaseSourceUploader:
     """Mimics the part of BaseSourceUploader that KGXUploader builds on."""
@@ -45,6 +43,8 @@ KGXUploader = kg_uploader_module.KGXUploader
 GRAPH_URL = "https://example.org/graph-metadata.json"
 RELEASE_URL = "https://example.org/latest-release.json"
 MANIFEST_SRC_META = {"graph": GRAPH_URL, "release": RELEASE_URL, "license": "CC0"}
+# as every plugin manifest declares them, relative to the dumper's data_url
+RELATIVE_SRC_META = {"graph": "graph-metadata.json", "release": "../latest-release.json", "license": "CC0"}
 
 
 def make_uploader(src_doc=None, parser_metadata=None, src_meta=None):
@@ -62,7 +62,7 @@ def make_uploader(src_doc=None, parser_metadata=None, src_meta=None):
 
 
 class KGXUploaderMetadataTest(unittest.TestCase):
-    def test_uses_dump_time_metadata_without_fetching(self):
+    def test_uses_dump_time_metadata(self):
         uploader = make_uploader(
             src_doc={
                 KGX_METADATA_FIELD: {
@@ -72,45 +72,53 @@ class KGXUploaderMetadataTest(unittest.TestCase):
             }
         )
 
-        with mock.patch.object(kg_uploader_module.requests, "get") as fetch:
-            doc = uploader.generate_doc_src_master()
+        doc = uploader.generate_doc_src_master()
 
-        fetch.assert_not_called()
         self.assertEqual(doc["src_meta"]["graph"], {"nodes": 12})
         self.assertEqual(doc["src_meta"]["release"], {"version": "2026_07_21"})
         self.assertEqual(doc["src_meta"]["license"], "CC0")
 
-    def test_falls_back_to_fetching_without_dump_time_metadata(self):
-        uploader = make_uploader()
+    def test_omits_relative_declarations_without_dump_time_metadata(self):
+        """The manifests' real declarations: unresolvable here, so never published as-is."""
+        uploader = make_uploader(src_meta=dict(RELATIVE_SRC_META))
 
-        with mock.patch.object(kg_uploader_module.requests, "get") as fetch:
-            fetch.return_value.json.return_value = {"version": "2026_07_21"}
-            doc = uploader.generate_doc_src_master()
+        fake_config_module.logger.reset_mock()
+        doc = uploader.generate_doc_src_master()
 
-        self.assertEqual([call.args[0] for call in fetch.call_args_list], [GRAPH_URL, RELEASE_URL])
+        self.assertEqual(fake_config_module.logger.warning.call_count, 2)
+
+        self.assertNotIn("graph", doc["src_meta"])
+        self.assertNotIn("release", doc["src_meta"])
+        self.assertEqual(doc["src_meta"]["license"], "CC0")
+
+    def test_omits_only_the_keys_without_dump_time_metadata(self):
+        uploader = make_uploader(
+            src_doc={KGX_METADATA_FIELD: {"release": {"version": "2026_07_21"}}},
+            src_meta=dict(RELATIVE_SRC_META),
+        )
+
+        doc = uploader.generate_doc_src_master()
+
+        self.assertNotIn("graph", doc["src_meta"])
         self.assertEqual(doc["src_meta"]["release"], {"version": "2026_07_21"})
 
-    def test_leaves_url_in_place_when_fallback_fetch_fails(self):
-        uploader = make_uploader()
+    def test_passes_inlined_documents_through(self):
+        uploader = make_uploader(src_meta={"release": {"version": "pinned"}})
 
-        with mock.patch.object(kg_uploader_module.requests, "get") as fetch:
-            fetch.side_effect = requests.exceptions.ConnectionError("boom")
-            doc = uploader.generate_doc_src_master()
+        doc = uploader.generate_doc_src_master()
 
-        self.assertEqual(doc["src_meta"]["release"], RELEASE_URL)
+        self.assertEqual(doc["src_meta"]["release"], {"version": "pinned"})
 
     def test_picks_up_a_new_release_on_a_later_run(self):
-        """__metadata__ is overwritten on each run, so the manifest URLs must survive it."""
+        """__metadata__ is overwritten on each run, so the manifest declarations must survive it."""
         uploader = make_uploader(src_doc={KGX_METADATA_FIELD: {"release": {"version": "2026_07_20"}}})
 
-        with mock.patch.object(kg_uploader_module.requests, "get") as fetch:
-            first = uploader.generate_doc_src_master()
-            uploader.src_doc = {KGX_METADATA_FIELD: {"release": {"version": "2026_07_21"}}}
-            second = uploader.generate_doc_src_master()
+        first = uploader.generate_doc_src_master()
+        uploader.src_doc = {KGX_METADATA_FIELD: {"release": {"version": "2026_07_21"}}}
+        second = uploader.generate_doc_src_master()
 
         self.assertEqual(first["src_meta"]["release"], {"version": "2026_07_20"})
         self.assertEqual(second["src_meta"]["release"], {"version": "2026_07_21"})
-        self.assertEqual([call.args[0] for call in fetch.call_args_list], [GRAPH_URL, GRAPH_URL])
 
     def test_merges_parser_metadata(self):
         uploader = make_uploader(

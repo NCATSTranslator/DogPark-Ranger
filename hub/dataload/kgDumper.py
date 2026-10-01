@@ -58,6 +58,7 @@ class KgDumper(LastModifiedHTTPDumper):
             return True
 
         self.logger.debug("Release %s is already current; no download needed", self.release)
+        self.backfill_kgx_metadata()
         return False
 
     # entry point for set release
@@ -249,3 +250,29 @@ class KgDumper(LastModifiedHTTPDumper):
             # register_status("success") deep-copies src_doc right after post_dump,
             # which is what writes this to src_dump.
             self.src_doc[KGX_METADATA_FIELD] = captured
+
+    def backfill_kgx_metadata(self):
+        """Capture KGX metadata for a release that is current but was never captured.
+
+        capture_kgx_metadata() only runs after a download, so a source dumped before
+        capture existed has nothing recorded until upstream publishes again -- and the
+        uploader cannot fetch the documents itself, since it has no archive URL to
+        resolve the manifest's relative declarations against. The remote release
+        matches the one in the data folder here, so its documents describe it exactly.
+
+        Writes to src_dump directly: with nothing to download, the SDK never saves
+        src_doc. Never raises, for the same reason capture doesn't.
+        """
+        if self.src_doc.get(KGX_METADATA_FIELD):
+            return
+
+        self.capture_kgx_metadata()
+        captured = self.src_doc.get(KGX_METADATA_FIELD)
+        if not captured:
+            return
+
+        try:
+            self.src_dump.update_one({"_id": self.src_name}, {"$set": {KGX_METADATA_FIELD: captured}})
+            self.logger.info("Backfilled KGX metadata for current release %s", self.release)
+        except Exception as exc:
+            self.logger.warning("Unable to backfill KGX metadata for %s: %s", self.src_name, exc)

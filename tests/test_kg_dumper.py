@@ -83,6 +83,10 @@ class FakeDumper(KgDumper):
     current_release = "2026_07_20"
     _release_check_failed = False
 
+    def __init__(self):
+        # already captured, so an unchanged release has nothing to backfill
+        self.src_doc = {KGX_METADATA_FIELD: {"release": {"version": "2026_07_20"}}}
+
 
 def make_capture_dumper(src_meta, payloads, src_doc=None):
     """A stand-in for a generated KgDumper subclass at post_dump time."""
@@ -231,6 +235,72 @@ class KgxMetadataCaptureTest(unittest.TestCase):
 
         self.assertEqual(dumper.base_post_dump_calls, 1)
         self.assertEqual(dumper.src_doc[KGX_METADATA_FIELD], {"release": {"version": "2026_07_21"}})
+
+
+class KgxMetadataBackfillTest(unittest.TestCase):
+    """A current release dumped before capture existed gets its metadata on the next check."""
+
+    def make_current_dumper(self, src_doc=None, payloads=None):
+        dumper = make_capture_dumper(
+            {"graph": GRAPH_URL, "release": RELEASE_URL},
+            payloads if payloads is not None else {GRAPH_URL: {"nodes": 12}, RELEASE_URL: {"version": "2026_07_21"}},
+            src_doc=src_doc,
+        )
+        dumper.current_release = dumper.release
+        dumper._release_check_failed = False
+        dumper.src_dump = mock.Mock()
+        return dumper
+
+    def check_unchanged_release(self, dumper):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory, "example.tar.zst")
+            archive.touch()
+            return dumper.remote_is_better("https://example.org/data", archive)
+
+    def test_backfills_missing_metadata_without_downloading(self):
+        dumper = self.make_current_dumper(src_doc={"download": {"release": "2026_07_21"}})
+
+        self.assertFalse(self.check_unchanged_release(dumper))
+
+        expected = {"graph": {"nodes": 12}, "release": {"version": "2026_07_21"}}
+        self.assertEqual(dumper.src_doc[KGX_METADATA_FIELD], expected)
+        dumper.src_dump.update_one.assert_called_once_with(
+            {"_id": "example"}, {"$set": {KGX_METADATA_FIELD: expected}}
+        )
+
+    def test_leaves_captured_metadata_alone(self):
+        captured = {"release": {"version": "2026_07_21"}}
+        dumper = self.make_current_dumper(src_doc={KGX_METADATA_FIELD: captured})
+
+        self.assertFalse(self.check_unchanged_release(dumper))
+
+        self.assertEqual(dumper.client.urls, [])
+        self.assertEqual(dumper.src_doc[KGX_METADATA_FIELD], captured)
+        dumper.src_dump.update_one.assert_not_called()
+
+    def test_writes_nothing_when_metadata_is_unavailable(self):
+        dumper = self.make_current_dumper(
+            payloads={GRAPH_URL: FakeResponse(ok=False), RELEASE_URL: FakeResponse(ok=False)}
+        )
+
+        self.assertFalse(self.check_unchanged_release(dumper))
+
+        self.assertNotIn(KGX_METADATA_FIELD, dumper.src_doc)
+        dumper.src_dump.update_one.assert_not_called()
+
+    def test_failed_write_does_not_fail_the_check(self):
+        dumper = self.make_current_dumper()
+        dumper.src_dump.update_one.side_effect = RuntimeError("mongo down")
+
+        self.assertFalse(self.check_unchanged_release(dumper))
+
+    def test_backfills_only_once_across_archives(self):
+        dumper = self.make_current_dumper()
+
+        self.check_unchanged_release(dumper)
+        self.check_unchanged_release(dumper)
+
+        dumper.src_dump.update_one.assert_called_once()
 
 
 class KgxReleaseTest(unittest.TestCase):
