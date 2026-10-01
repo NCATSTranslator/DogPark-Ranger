@@ -55,6 +55,11 @@ MAX_SYNC_WORKERS = HUB_MAX_WORKERS
 # as any pending job will consume some memory).
 MAX_QUEUED_JOBS = os.cpu_count() * 4
 
+# On a free-threaded (no-GIL) Python build, run the HUB_MAX_WORKERS jobs (downloads,
+# uploads, index batches) as threads in the hub process instead of forked processes.
+# Ignored on regular (GIL) builds, which keep using processes.
+HUB_FREE_THREADED_WORKERS = True
+
 # when creating a snapshot, how long should we wait before querying ES
 # to check snapshot status/completion ? (in seconds)
 # Since myvariant's indices are pretty big, a whole snaphost won't happen in few secs,

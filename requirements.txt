@@ -1,1 +1,7 @@
--e git+https://github.com/biothings/biothings.api.git@1.1.x#egg=biothings[hub]
+# pip >= 26 rejects extras in an "#egg=" fragment, so the hub extras are requested on their own line
+-e git+https://github.com/biothings/biothings.api.git@1.2.x#egg=biothings
+biothings[hub]
+# imported directly by hub/ modules
+bmt==1.4.6
+jsonlines
+msgpack
