@@ -34,6 +34,8 @@ _CORE_EDGE_FIELDS = {
     "subject",
     "object",
     "predicate",
+    "knowledge_level",
+    "agent_type",
     "sources",
     "primary_knowledge_source",
     "aggregator_knowledge_source",
@@ -83,7 +85,7 @@ _FALLBACK_QUALIFIER_FIELDS = {
 
 GANDALF_NORMALIZATION_STEPS = [
     "nodes normalized to id/name/categories/attributes",
-    "edges normalized to subject/object/predicate/id/sources/qualifiers/attributes",
+    "edges normalized to subject/object/predicate/id/knowledge_level/agent_type/sources/qualifiers/attributes",
     "edge sources normalized and dogpark-tier0 aggregator prepended",
     "edge qualifier fields copied to TRAPI qualifiers list",
     "node/edge non-core fields copied to TRAPI attributes list",
@@ -245,6 +247,8 @@ def normalize_kgx_edge(raw, unique_qualifier_set=None):
         "object": raw["object"],
         "predicate": raw["predicate"],
         "id": raw.get("id"),
+        "knowledge_level": raw.get("knowledge_level"),
+        "agent_type": raw.get("agent_type"),
         "sources": _extract_sources(raw),
         "qualifiers": _extract_qualifiers(raw, unique_qualifier_set),
         "attributes": _extract_edge_attributes(raw),

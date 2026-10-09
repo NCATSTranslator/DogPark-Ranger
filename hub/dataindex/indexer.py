@@ -48,6 +48,51 @@ class MissingNodeCollectionError(Exception):
         super().__init__(message)
 
 
+def resolve_kg_build_backends(build_doc: dict) -> tuple[_BuildBackend, _BuildBackend, str]:
+    """Resolve the (edge, node) Mongo backends for a tier0-style KG build.
+
+    Edges come from the build's own backend (``_BuildDoc.parse_backend()``),
+    the merged/target collection for the build being indexed or published.
+    Nodes are read straight from the source database under a
+    ``<data_name>_nodes`` collection (or ``build_config.node_collection``
+    when set), since nodes are never duplicated into the build/target
+    database -- the same resolution ``KGXIndexer`` has always used.
+
+    Shared by ``KGXIndexer`` (this module) and ``GandalfBuilder``
+    (``hub/databuild/gandalf_builder.py``) so both stages agree on
+    exactly which Mongo collections a given build's data comes from,
+    instead of two independent implementations silently drifting apart.
+
+    Returns ``(edge_backend, node_backend, data_name)`` where ``data_name``
+    is the source name shared by both collections (e.g. ``"tier0_kg"`` for
+    ``tier0_kg_edges`` / ``tier0_kg_nodes``).
+    """
+    _build_doc = _BuildDoc(build_doc)
+    edge_backend = _build_doc.parse_backend()
+    data_name = edge_backend.col.replace("_edges", "")
+    node_backend = _resolve_node_backend(_build_doc, data_name)
+    return edge_backend, node_backend, data_name
+
+
+def _resolve_node_backend(build_doc: _BuildDoc, col_name: str) -> _BuildBackend:
+    """Internal: find the node collection for a tier0 KG build from the
+    BuildDoc, separate from the default client that targets the edges."""
+    try:
+        backend_url = build_doc["build_config"]["node_collection"]
+    except KeyError:
+        backend_url = col_name + "_nodes"
+
+    db = mongo.get_src_db()
+    discovered_collections = db.list_collection_names()
+    if backend_url in discovered_collections:
+        return _BuildBackend(
+            dict(zip(("host", "port"), db.client.address)),
+            db.name,
+            backend_url,
+        )
+    raise MissingNodeCollectionError(discovered_collections, db)
+
+
 class KGXIndexer(Indexer):
     """
     RTXKG2 Knowledge Graph custom indexer
@@ -61,19 +106,15 @@ class KGXIndexer(Indexer):
 
         _build_doc = _BuildDoc(build_doc)
 
-        # mongodb edge client metadata
-        edge_build = _build_doc.parse_backend()
+        # mongodb edge/node client metadata. Shared with GandalfBuilder
+        # (hub/databuild/gandalf_builder.py) via resolve_kg_build_backends()
+        # so both stages always agree on which collections a build's data
+        # actually lives in.
+        edge_build, node_build, data_name = resolve_kg_build_backends(build_doc)
         self.mongo_edge_client_args = edge_build.args
         self.mongo_edge_database_name = edge_build.dbs
         self.mongo_edge_collection_name = edge_build.col
 
-
-
-        # mongodb node client metadata
-        # Need to acquire the KG nodes collection from mongodb
-        data_name = edge_build.col.replace("_edges", "")
-
-        node_build = self._build_node_backend_client(_build_doc, data_name)
         self.mongo_node_client_args = node_build.args
         self.mongo_node_database_name = node_build.dbs
         self.mongo_node_collection_name = node_build.col
@@ -170,36 +211,11 @@ class KGXIndexer(Indexer):
         if unmerged_keys:
             raise ValueError(f"Unmerged source metadata found for {data_name}: {unmerged_keys}")
 
-    def _build_node_backend_client(self, build_doc: _BuildDoc, col_name:str) -> _BuildBackend:
-        """
-        Internal method for building a mongodb client specifically
-        for the node collection from the BuildDoc, separate from the
-        default client that targets the edges
-        """
-
-        try:
-            backend_url = build_doc["build_config"]["node_collection"]
-        except KeyError:
-            backend_url = col_name + "_nodes"
-        # backend_url = ['src', 'CEBS_nodes']
-        # backend_url = 'CEBS_nodes'
-        # backend_url = "DrugCentral_nodes"
-        # backend_url = "rtx_nodes"
-
-        # backend_url = "ctd_nodes"
-
-        db = mongo.get_src_db()
-
-
-        discovered_collections = db.list_collection_names()
-        if backend_url in discovered_collections:
-            node_build_backend = _BuildBackend(
-                dict(zip(("host", "port"), db.client.address)),
-                db.name,
-                backend_url,
-            )
-            return node_build_backend
-        raise MissingNodeCollectionError(discovered_collections, db)
+    def _build_node_backend_client(self, build_doc: _BuildDoc, col_name: str) -> _BuildBackend:
+        """Deprecated in favor of the module-level ``_resolve_node_backend()``,
+        which this now delegates to -- kept so any external caller using this
+        name directly keeps working."""
+        return _resolve_node_backend(build_doc, col_name)
 
     async def do_index(self, job_manager, batch_size, ids, mode, **kwargs):
         client = DatabaseClient(**self.mongo_edge_client_args)
