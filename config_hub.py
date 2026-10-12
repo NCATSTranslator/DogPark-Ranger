@@ -103,13 +103,12 @@ RELEASE_CONFIG = {}
 
 # Gandalf build (hub/databuild/gandalf_builder.py): settings for the post-merge
 # step of a build config whose builder_class is GandalfBuilder, which runs
-# bin/build_gandalf.sh. Every key is optional and the defaults reproduce the
-# script's own. Real values (paths, bucket) belong in the environment-specific,
+# bin/build_gandalf.sh. Real values (paths, bucket) belong in the environment-specific,
 # gitignored config.py, not here.
-#   "root"         directory holding processed/, compacted/ and tmp/   (default /data/dogpark/gandalf)
+#   "s3"           {"bucket", "prefix", "region", "profile"}, the bucket is required;
 #   "gandalf_bin"  gandalf-build-mongo, full path inside Gandalf's .venv  (default: found on PATH)
+#   "root"         directory holding processed/, compacted/ and tmp/   (default /data/dogpark/gandalf)
 #   "service"      systemd unit to restart; None or "" skips the restart  (default "gandalf.service")
-#   "s3"           {"bucket", "prefix", "region", "profile"}; no bucket means no upload
 #   "timeout"      seconds before the script is killed                    (default 6 hours)
 #   "script"       another build script to run                            (default bin/build_gandalf.sh)
 GANDALF_BUILD = {}

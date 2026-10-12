@@ -20,14 +20,17 @@ Setup
            builder_class="hub.databuild.gandalf_builder.GandalfBuilder",
        )
 
-2. Optionally tune it in ``config.py`` (every key is optional)::
+2. Set it up in ``config.py``. ``s3`` is required and ``gandalf_bin`` is needed unless
+   ``gandalf-build-mongo`` is on the hub's PATH. The script checks everything before it
+   builds, and stops at once, listing every problem, when something is missing::
 
        GANDALF_BUILD = {
-           "root": "/data/dogpark/gandalf",
            "gandalf_bin": "/opt/home/dogpark/gandalf/.venv/bin/gandalf-build-mongo",
-           "service": "gandalf.service",   # None or "" skips the restart
            "s3": {"bucket": "my-bucket", "prefix": "gandalf",
-                  "region": "us-west-2", "profile": None},
+                  "region": "us-west-2", "profile": None},   # "s3": None skips the upload on purpose
+           # optional:
+           "root": "/data/dogpark/gandalf",
+           "service": "gandalf.service",   # None or "" skips the restart
            "timeout": 6 * 3600,            # seconds before the script is killed
            "script": "/path/to/another/build_gandalf.sh",
        }
@@ -118,15 +121,20 @@ def script_env(settings, edge_backend, node_backend, release=None):
     if "service" in settings:
         # the script reads a variable that is set but empty as "skip the restart"
         env["GANDALF_SERVICE"] = settings["service"] or ""
-    s3 = settings.get("s3") or {}
-    for key, var in (
-        ("bucket", "GANDALF_S3_BUCKET"),
-        ("prefix", "GANDALF_S3_PREFIX"),
-        ("region", "GANDALF_S3_REGION"),
-        ("profile", "GANDALF_S3_PROFILE"),
-    ):
-        if s3.get(key):
-            env[var] = str(s3[key])
+    if "s3" in settings and settings["s3"] is None:
+        # an on-purpose "no upload", like "service": None. Only None does it: a bucket that is
+        # missing or left empty stays unset, and the script refuses to start without one
+        env["GANDALF_S3_BUCKET"] = ""
+    else:
+        s3 = settings.get("s3") or {}
+        for key, var in (
+            ("bucket", "GANDALF_S3_BUCKET"),
+            ("prefix", "GANDALF_S3_PREFIX"),
+            ("region", "GANDALF_S3_REGION"),
+            ("profile", "GANDALF_S3_PROFILE"),
+        ):
+            if s3.get(key):
+                env[var] = str(s3[key])
     return env
 
 
@@ -230,10 +238,6 @@ class GandalfBuilder(LinkDataBuilder):
         release = kgx_release_for(data_name)
         env = {**os.environ, "PYTHONUNBUFFERED": "1", **script_env(settings, edge_backend, node_backend, release)}
 
-        if not env.get("GANDALF_S3_BUCKET"):
-            self.logger.warning(
-                "No S3 bucket configured (GANDALF_BUILD['s3']['bucket']): the graph will be built but not uploaded"
-            )
         self.logger.info(
             "Running %s: nodes=%s.%s edges=%s.%s KGX release=%s",
             script,

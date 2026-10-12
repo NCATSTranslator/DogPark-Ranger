@@ -23,7 +23,9 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "bin" / "build_gandalf.sh"
 BASH = "/bin/bash" if os.path.exists("/bin/bash") else shutil.which("bash")
 # what the script and the stubs themselves need, and nothing else
-BASIC_TOOLS = ("bash", "env", "tar", "gzip", "gunzip", "ln", "mkdir", "date", "basename", "dirname", "sed", "cat", "rm")
+BASIC_TOOLS = (
+    "bash", "env", "tar", "gzip", "gunzip", "ln", "mkdir", "date", "basename", "dirname", "sed", "cat", "rm", "id",
+)
 
 STUBS = {
     "gandalf-build-mongo": """#!/usr/bin/env bash
@@ -37,9 +39,26 @@ if [[ -n "${STUB_BUILD_FAIL:-}" ]]; then echo "stub build exploded" >&2; exit 3;
 mkdir -p "$out" && echo graph > "$out/graph.bin"
 echo "stub graph built"
 """,
-    "sudo": '#!/usr/bin/env bash\necho "sudo $*" >> "$STUB_LOG"\n',
-    "systemctl": '#!/usr/bin/env bash\necho "systemctl $*" >> "$STUB_LOG"\n',
-    "aws": '#!/usr/bin/env bash\necho "aws $*" >> "$STUB_LOG"\n',
+    # `sudo -n -l ...` is the preflight asking whether the restart is allowed, anything else is the restart itself
+    "sudo": """#!/usr/bin/env bash
+echo "sudo $*" >> "$STUB_LOG"
+if [[ "$2" == "-l" ]]; then
+    if [[ -n "${STUB_SUDO_DENIED:-}" ]]; then echo "Sorry, user may not run sudo for that command" >&2; exit 1; fi
+    exit 0
+fi
+if [[ -n "${STUB_RESTART_FAIL:-}" ]]; then exit 1; fi
+""",
+    "systemctl": """#!/usr/bin/env bash
+echo "systemctl $*" >> "$STUB_LOG"
+if [[ "$1" == "cat" && -n "${STUB_NO_UNIT:-}" ]]; then echo "No files found for $2." >&2; exit 1; fi
+""",
+    "aws": """#!/usr/bin/env bash
+echo "aws $*" >> "$STUB_LOG"
+if [[ "$1" == "sts" ]]; then
+    if [[ -n "${STUB_AWS_NO_CREDENTIALS:-}" ]]; then echo "Unable to locate credentials." >&2; exit 253; fi
+    echo "arn:aws:iam::123456789012:user/dogpark"
+fi
+""",
 }
 DATE = "10_09_2026"
 
@@ -82,6 +101,8 @@ class BuildGandalfScriptTest(unittest.TestCase):
             "GANDALF_MONGO_DB": "dogpark_src",
             "GANDALF_NODES_COLLECTION": "tier0_kg_nodes",
             "GANDALF_EDGES_COLLECTION": "tier0_kg_edges",
+            # set but empty is how a run says "no upload on purpose"; unset is an error (see ConfigurationCheckTest)
+            "GANDALF_S3_BUCKET": "",
         }
         env.update(overrides)
         env = {key: value for key, value in env.items() if value is not None}
@@ -89,6 +110,14 @@ class BuildGandalfScriptTest(unittest.TestCase):
 
     def calls(self):
         return self.log.read_text().splitlines() if self.log.exists() else []
+
+    def build_calls(self):
+        """The gandalf-build-mongo line and the TMPDIR line the stub logs right after it."""
+        calls = self.calls()
+        for index, call in enumerate(calls):
+            if call.startswith("gandalf-build-mongo"):
+                return calls[index : index + 2]
+        return []
 
     @property
     def archive(self):
@@ -122,7 +151,7 @@ class FullRunTest(BuildGandalfScriptTest):
     def test_passes_the_resolved_coordinates_to_gandalf_build_mongo(self):
         self.run_script()
 
-        build_call = self.calls()[0]
+        build_call, tmpdir_line = self.build_calls()
         self.assertEqual(
             build_call,
             "gandalf-build-mongo --mongo-uri mongodb://db.example:27017 --db dogpark_src "
@@ -130,7 +159,7 @@ class FullRunTest(BuildGandalfScriptTest):
             f"--output {self.root}/processed/{DATE}/graph_mmap/",
         )
         # the build gets its own temp dir, as in the previous hand-run script
-        self.assertEqual(self.calls()[1], f"TMPDIR={self.root}/tmp")
+        self.assertEqual(tmpdir_line, f"TMPDIR={self.root}/tmp")
 
     def test_restarts_the_service_without_ever_prompting_for_a_password(self):
         self.run_script()
@@ -152,12 +181,12 @@ class FullRunTest(BuildGandalfScriptTest):
         )
 
     def test_s3_key_handles_a_trailing_slash_or_no_prefix(self):
-        self.run_script(GANDALF_S3_BUCKET="b", GANDALF_S3_PREFIX="gandalf/")
-        self.run_script(GANDALF_S3_BUCKET="b")
+        self.run_script(GANDALF_S3_BUCKET="my-bucket", GANDALF_S3_PREFIX="gandalf/")
+        self.run_script(GANDALF_S3_BUCKET="my-bucket")
 
-        uploads = [call for call in self.calls() if call.startswith("aws ")]
-        self.assertIn(f"s3://b/gandalf/gandalf_translatorkg_{DATE}.tar.gz", uploads[0])
-        self.assertIn(f"s3://b/gandalf_translatorkg_{DATE}.tar.gz", uploads[1])
+        uploads = [call for call in self.calls() if call.startswith("aws s3 cp")]
+        self.assertIn(f"s3://my-bucket/gandalf/gandalf_translatorkg_{DATE}.tar.gz", uploads[0])
+        self.assertIn(f"s3://my-bucket/gandalf_translatorkg_{DATE}.tar.gz", uploads[1])
         self.assertNotIn("--region", uploads[1])
         self.assertNotIn("--profile", uploads[1])
 
@@ -182,13 +211,13 @@ class FullRunTest(BuildGandalfScriptTest):
 
 
 class OptionalStepsTest(BuildGandalfScriptTest):
-    def test_skips_the_upload_with_a_warning_when_no_bucket_is_set(self):
+    def test_an_explicitly_empty_bucket_skips_the_upload_on_purpose(self):
         self.remove_stub("aws")  # not needed, so not required either
 
-        result = self.run_script()
+        result = self.run_script(GANDALF_S3_BUCKET="")
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("WARNING: GANDALF_S3_BUCKET is not set", result.stdout)
+        self.assertIn("GANDALF_S3_BUCKET is empty, skipping the S3 upload", result.stdout)
         self.assertFalse([call for call in self.calls() if call.startswith("aws ")])
 
     def test_an_explicitly_empty_service_skips_the_restart(self):
@@ -216,7 +245,167 @@ class OptionalStepsTest(BuildGandalfScriptTest):
         result = self.run_script(GANDALF_BUILD_MONGO_BIN=str(elsewhere / "gandalf-build-mongo"))
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(self.calls()[0].startswith("gandalf-build-mongo --mongo-uri"))
+        self.assertTrue(self.build_calls()[0].startswith("gandalf-build-mongo --mongo-uri"))
+
+
+class ConfigurationCheckTest(BuildGandalfScriptTest):
+    """The script refuses to start, having touched nothing, when it can't possibly finish."""
+
+    def assert_refused(self, result, *needles):
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("Nothing was built, restarted or uploaded", result.stderr)
+        for needle in needles:
+            self.assertIn(needle, result.stderr)
+        self.assertEqual(self.build_calls(), [], "the build must not have started")
+        self.assertFalse(self.root.exists(), "nothing may be created before every check has passed")
+        self.assertNotIn("[1/5]", result.stdout)
+
+    def test_a_bucket_that_was_never_set_is_an_error_not_a_silent_skip(self):
+        result = self.run_script(GANDALF_S3_BUCKET=None)
+
+        self.assert_refused(result, "GANDALF_S3_BUCKET is not set", "empty string to skip the upload on purpose")
+        self.assertEqual(self.calls(), [], "not even the environment checks run once the settings are wrong")
+
+    def test_every_problem_is_reported_in_one_go(self):
+        self.remove_stub("gandalf-build-mongo")
+
+        result = self.run_script(
+            GANDALF_MONGO_URI=None,
+            GANDALF_MONGO_DB=None,
+            GANDALF_NODES_COLLECTION=None,
+            GANDALF_EDGES_COLLECTION=None,
+            GANDALF_S3_BUCKET=None,
+        )
+
+        self.assert_refused(
+            result,
+            "GANDALF_MONGO_URI is not set",
+            "GANDALF_MONGO_DB is not set",
+            "GANDALF_NODES_COLLECTION is not set",
+            "GANDALF_EDGES_COLLECTION is not set",
+            "GANDALF_S3_BUCKET is not set",
+            "required command not found: gandalf-build-mongo",
+        )
+        listed = [line for line in result.stderr.splitlines() if line.startswith("  - ")]
+        self.assertEqual(len(listed), 6, result.stderr)
+
+    def test_the_message_says_where_the_hub_settings_live(self):
+        result = self.run_script(GANDALF_S3_BUCKET=None)
+
+        self.assertIn("GANDALF_BUILD in config.py", result.stderr)
+        self.assertIn('"s3": None', result.stderr)
+
+    def test_values_that_cannot_work_are_refused_with_the_reason(self):
+        cases = {
+            "mongo uri without a scheme": ({"GANDALF_MONGO_URI": "localhost:27017"}, "must start with mongodb://"),
+            "bucket given as an s3 url": ({"GANDALF_S3_BUCKET": "s3://my-bucket"}, "is not a bucket name"),
+            "bucket with capitals": ({"GANDALF_S3_BUCKET": "My_Bucket"}, "is not a bucket name"),
+            "bucket with a path": ({"GANDALF_S3_BUCKET": "my-bucket/gandalf"}, "is not a bucket name"),
+            "prefix with a leading slash": ({"GANDALF_S3_BUCKET": "my-bucket", "GANDALF_S3_PREFIX": "/gandalf"}, "GANDALF_S3_PREFIX"),
+            "prefix given as an s3 url": ({"GANDALF_S3_BUCKET": "my-bucket", "GANDALF_S3_PREFIX": "s3://my-bucket/x"}, "GANDALF_S3_PREFIX"),
+            "prefix with a space": ({"GANDALF_S3_BUCKET": "my-bucket", "GANDALF_S3_PREFIX": "my gandalf"}, "GANDALF_S3_PREFIX"),
+            "region that is not one": ({"GANDALF_S3_BUCKET": "my-bucket", "GANDALF_S3_REGION": "US West 2"}, "is not a region name"),
+            "date in the wrong format": ({"GANDALF_BUILD_DATE": "2026-10-09"}, "MM_DD_YYYY"),
+            "relative root": ({"GANDALF_ROOT": "relative/dir"}, "must be an absolute path"),
+        }
+        for name, (overrides, expected) in cases.items():
+            with self.subTest(case=name):
+                result = self.run_script(**overrides)
+
+                self.assert_refused(result, expected)
+                # exactly the problem the case is about, so it can't pass for an unrelated reason
+                listed = [line for line in result.stderr.splitlines() if line.startswith("  - ")]
+                self.assertEqual(len(listed), 1, result.stderr)
+
+    def test_a_bad_mongo_uri_is_refused_without_printing_its_credentials(self):
+        result = self.run_script(GANDALF_MONGO_URI="hubuser:s3cret@db.example:27017")
+
+        self.assert_refused(result, "must start with mongodb://")
+        self.assertNotIn("s3cret", result.stdout + result.stderr)
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can write anywhere")
+    def test_a_root_folder_nobody_can_write_to_is_caught_up_front(self):
+        locked = self.tmp / "locked"
+        locked.mkdir()
+        locked.chmod(0o555)
+        self.addCleanup(locked.chmod, 0o755)
+
+        result = self.run_script(GANDALF_ROOT=str(locked / "gandalf"))
+
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("can't be created or written", result.stderr)
+        self.assertEqual(self.build_calls(), [])
+        self.assertFalse((locked / "gandalf").exists())
+
+    def test_a_systemd_unit_that_does_not_exist_is_caught_before_the_build(self):
+        result = self.run_script(STUB_NO_UNIT="1")
+
+        self.assert_refused(result, "systemd has no unit called gandalf.service")
+
+    def test_a_sudo_rule_that_does_not_cover_the_restart_is_caught_before_the_build(self):
+        result = self.run_script(STUB_SUDO_DENIED="1")
+
+        self.assert_refused(result, "sudo won't run 'systemctl restart gandalf.service'", "without a password")
+
+    def test_aws_credentials_that_do_not_work_are_caught_before_the_build(self):
+        result = self.run_script(GANDALF_S3_BUCKET="my-bucket", STUB_AWS_NO_CREDENTIALS="1")
+
+        self.assert_refused(result, "AWS rejected the credentials", "Unable to locate credentials")
+        self.assertFalse([call for call in self.calls() if call.startswith("aws s3")])
+
+    def test_the_aws_check_asks_as_the_same_account_the_upload_will_use(self):
+        self.run_script(GANDALF_S3_BUCKET="my-bucket", GANDALF_S3_REGION="us-west-2", GANDALF_S3_PROFILE="gandalf-profile")
+
+        asked = [call for call in self.calls() if call.startswith("aws sts get-caller-identity")]
+        self.assertEqual(len(asked), 1)
+        self.assertIn("--region us-west-2 --profile gandalf-profile", asked[0])
+
+    def test_the_aws_check_can_be_skipped_for_a_host_that_cannot_reach_sts(self):
+        result = self.run_script(GANDALF_S3_BUCKET="my-bucket", STUB_AWS_NO_CREDENTIALS="1", GANDALF_SKIP_AWS_CHECK="1")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse([call for call in self.calls() if call.startswith("aws sts")])
+        self.assertTrue([call for call in self.calls() if call.startswith("aws s3 cp")])
+
+    def test_the_environment_is_checked_before_the_build_starts(self):
+        self.run_script(GANDALF_S3_BUCKET="my-bucket")
+
+        calls = self.calls()
+        build = next(index for index, call in enumerate(calls) if call.startswith("gandalf-build-mongo"))
+        before_the_build = calls[:build]
+        self.assertIn("systemctl cat gandalf.service", before_the_build)
+        self.assertIn("sudo -n -l systemctl restart gandalf.service", before_the_build)
+        self.assertTrue([call for call in before_the_build if call.startswith("aws sts get-caller-identity")])
+        # checking is not doing: the restart and the upload come after the build
+        self.assertNotIn("sudo -n systemctl restart gandalf.service", before_the_build)
+        self.assertFalse([call for call in before_the_build if call.startswith("aws s3")])
+
+    def test_switched_off_steps_need_none_of_their_tools(self):
+        for tool in ("aws", "sudo", "systemctl"):
+            self.remove_stub(tool)
+
+        result = self.run_script(GANDALF_S3_BUCKET="", GANDALF_SERVICE="")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([call for call in self.calls() if not call.startswith(("gandalf-build-mongo", "TMPDIR"))], [])
+
+    def test_the_plan_is_printed_before_the_build_starts(self):
+        result = self.run_script(GANDALF_S3_BUCKET="my-bucket", GANDALF_S3_PREFIX="gandalf")
+
+        out = result.stdout
+        self.assertIn(f"Output:   {self.root}/processed/{DATE}/graph_mmap", out)
+        self.assertIn("Restart:  gandalf.service", out)
+        self.assertIn(
+            f"Upload:   s3://my-bucket/gandalf/gandalf_translatorkg_{DATE}.tar.gz (as arn:aws:iam::123456789012:user/dogpark)",
+            out,
+        )
+        self.assertLess(out.index("Upload:"), out.index("[1/5]"))
+
+    def test_the_plan_says_which_steps_are_switched_off(self):
+        result = self.run_script(GANDALF_SERVICE="")  # the bucket is empty in the base environment
+
+        self.assertIn("Restart:  skipped (GANDALF_SERVICE is empty)", result.stdout)
+        self.assertIn("Upload:   skipped (GANDALF_S3_BUCKET is empty)", result.stdout)
 
 
 class FailureTest(BuildGandalfScriptTest):
@@ -239,7 +428,7 @@ class FailureTest(BuildGandalfScriptTest):
 
         result = self.run_script(GANDALF_S3_BUCKET="my-bucket")
 
-        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.returncode, 2)
         self.assertIn("required command not found: aws", result.stderr)
         self.assertEqual(self.calls(), [], "the build must not have started")
 
@@ -248,7 +437,7 @@ class FailureTest(BuildGandalfScriptTest):
 
         result = self.run_script()
 
-        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.returncode, 2)
         self.assertIn("required command not found: gandalf-build-mongo", result.stderr)
         self.assertIn("GANDALF_BUILD_MONGO_BIN", result.stderr)
 
@@ -257,7 +446,7 @@ class FailureTest(BuildGandalfScriptTest):
 
         result = self.run_script()
 
-        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.returncode, 2)
         self.assertIn("required command not found: sudo", result.stderr)
         self.assertEqual(self.calls(), [])
 
@@ -269,15 +458,13 @@ class FailureTest(BuildGandalfScriptTest):
         self.assertIn("ERROR: build_gandalf.sh failed at line", result.stderr)
         self.assertFalse(self.archive.exists())
         self.assertFalse((self.root / "processed" / "latest").exists())
-        self.assertFalse([call for call in self.calls() if call.startswith(("sudo", "aws"))])
+        self.assertFalse([call for call in self.calls() if call.startswith(("sudo -n systemctl", "aws s3"))])
 
     def test_a_failed_restart_stops_before_the_upload(self):
-        self.add_stub("sudo", '#!/usr/bin/env bash\necho "sudo $*" >> "$STUB_LOG"\nexit 1\n')
-
-        result = self.run_script(GANDALF_S3_BUCKET="my-bucket")
+        result = self.run_script(STUB_RESTART_FAIL="1", GANDALF_S3_BUCKET="my-bucket")
 
         self.assertEqual(result.returncode, 1)
-        self.assertFalse([call for call in self.calls() if call.startswith("aws ")])
+        self.assertFalse([call for call in self.calls() if call.startswith("aws s3")])
 
 
 class SecretsTest(BuildGandalfScriptTest):
@@ -288,7 +475,7 @@ class SecretsTest(BuildGandalfScriptTest):
         self.assertNotIn("s3cret", result.stdout + result.stderr)
         self.assertIn("//***@db.example:27017", result.stdout)
         # ...but the build itself still gets the real URI
-        self.assertIn("mongodb://hubuser:s3cret@db.example:27017", self.calls()[0])
+        self.assertIn("mongodb://hubuser:s3cret@db.example:27017", self.build_calls()[0])
 
 
 if __name__ == "__main__":

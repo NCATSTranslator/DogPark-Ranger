@@ -136,6 +136,18 @@ class ScriptEnvTest(unittest.TestCase):
         self.assertNotIn("GANDALF_S3_REGION", env)
         self.assertNotIn("GANDALF_S3_PROFILE", env)
 
+    def test_s3_none_skips_the_upload_on_purpose(self):
+        env = gb.script_env({"s3": None}, edges(), nodes())
+
+        # set-but-empty is how the script tells "no upload, on purpose" from "nobody configured it"
+        self.assertEqual(env["GANDALF_S3_BUCKET"], "")
+        self.assertNotIn("GANDALF_S3_PREFIX", env)
+
+    def test_a_missing_or_empty_bucket_stays_unset_so_the_script_refuses_to_start(self):
+        for settings in ({}, {"s3": {}}, {"s3": {"bucket": ""}}, {"s3": {"bucket": None, "prefix": "gandalf"}}):
+            with self.subTest(settings=settings):
+                self.assertNotIn("GANDALF_S3_BUCKET", gb.script_env(settings, edges(), nodes()))
+
     def test_refuses_nodes_and_edges_in_different_databases(self):
         with self.assertRaises(gb.GandalfBuildError) as caught:
             gb.script_env({}, edges(dbs="dogpark_target"), nodes(dbs="dogpark_src"))
@@ -359,23 +371,37 @@ class PostMergeTest(unittest.TestCase):
 
         self.assertIn("path_seen=yes", self.script_output(builder))
 
-    def test_warns_up_front_when_nothing_will_be_uploaded(self):
-        script = self.make_script("true\n")
+    def test_a_missing_bucket_reaches_the_script_unset_and_a_switched_off_upload_reaches_it_empty(self):
+        script = self.make_script('echo "bucket=${GANDALF_S3_BUCKET-<unset>}"\n')
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("GANDALF_S3_BUCKET", None)
-            builder = self.make_builder({"script": str(script)})
+            missing = self.make_builder({"script": str(script)})
+            missing.post_merge([], 1, None)
+            switched_off = self.make_builder({"script": str(script), "s3": None})
+            switched_off.post_merge([], 1, None)
+
+        self.assertEqual(self.script_output(missing), ["bucket=<unset>"])
+        self.assertEqual(self.script_output(switched_off), ["bucket="])
+        # the script decides what a missing bucket means, the builder doesn't second-guess it
+        missing.logger.warning.assert_not_called()
+
+    def test_a_script_that_refuses_to_start_fails_the_build_with_its_reasons(self):
+        script = self.make_script(
+            """\
+            echo "ERROR: build_gandalf.sh is not set up to run. Nothing was built, restarted or uploaded." >&2
+            echo "  - GANDALF_S3_BUCKET is not set: name the bucket to upload to" >&2
+            exit 2
+            """
+        )
+        builder = self.make_builder({"script": str(script)})
+
+        with self.assertRaises(gb.GandalfBuildError) as caught:
             builder.post_merge([], 1, None)
 
-        builder.logger.warning.assert_called_once()
-        self.assertIn("not uploaded", builder.logger.warning.call_args.args[0])
-
-    def test_does_not_warn_when_a_bucket_is_configured(self):
-        script = self.make_script("true\n")
-        builder = self.make_builder({"script": str(script), "s3": {"bucket": "b"}})
-
-        builder.post_merge([], 1, None)
-
-        builder.logger.warning.assert_not_called()
+        self.assertIn("status 2", str(caught.exception))
+        self.assertIn("GANDALF_S3_BUCKET is not set", str(caught.exception))
+        builder.register_status.assert_called_once()
+        self.assertIn("GANDALF_S3_BUCKET is not set", builder.register_status.call_args.kwargs["job"]["err"])
 
     def test_a_failing_script_marks_the_build_failed_and_raises(self):
         script = self.make_script("echo working; echo 'step 4 failed' >&2; exit 9\n")
