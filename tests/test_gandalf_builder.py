@@ -1,10 +1,9 @@
-"""Tests for hub.databuild.gandalf_builder (Option D, GANDALF_INTEGRATION.md).
+"""Tests for hub.databuild.gandalf_builder.
 
-biothings isn't importable in every environment that runs these tests (it
-connects to MongoDB the moment ``biothings.hub`` is imported), so, as in
-tests/test_kg_uploader.py, the small part of it that gandalf_builder imports is
-faked in sys.modules. Everything about running a process is real: actual bash,
-actual pipes, actual timeouts and process-group kills.
+biothings connects to MongoDB as soon as ``biothings.hub`` is imported, so, as in
+tests/test_kg_uploader.py, the few biothings names that gandalf_builder imports are
+replaced with fakes in sys.modules. Process handling is not faked: the tests use real
+bash, pipes, timeouts and process-group kills.
 """
 
 import inspect
@@ -38,8 +37,8 @@ fake_hub_db_module.get_src_dump = mock.Mock(name="get_src_dump")
 fake_indexer_module = types.ModuleType("hub.dataindex.indexer")
 fake_indexer_module.resolve_kg_build_backends = mock.Mock(name="resolve_kg_build_backends")
 
-# a plain `import biothings.utils.hub_db` walks every parent package, so each one
-# needs its own empty stand-in too, not just the leaf modules above
+# importing biothings.utils.hub_db also imports each of its parent packages, so the
+# parents need empty fakes too
 with mock.patch.dict(
     sys.modules,
     {
@@ -72,8 +71,8 @@ def nodes(**kwargs):
 
 class DiscoveryTest(unittest.TestCase):
     def test_the_package_exposes_the_builder_for_biothings_class_discovery(self):
-        # BuilderManager.find_builder_classes() only looks at names defined in the
-        # hub.databuild package itself, using exactly this predicate
+        # BuilderManager.find_builder_classes() only looks at the names defined in the
+        # hub.databuild package, with this predicate
         found = [
             klass
             for _, klass in inspect.getmembers(
@@ -114,7 +113,7 @@ class ScriptEnvTest(unittest.TestCase):
     def test_adds_the_build_name_only_when_known(self):
         env = gb.script_env({}, edges(), nodes(), build_name="tier0_kg_gandalf_20261012_wffqr2d5")
 
-        # the script names its graph folder and its archive after it
+        # the script names the graph folder and the archive after it
         self.assertEqual(env["GANDALF_BUILD_NAME"], "tier0_kg_gandalf_20261012_wffqr2d5")
         self.assertNotIn("GANDALF_BUILD_NAME", gb.script_env({}, edges(), nodes()))
 
@@ -131,7 +130,7 @@ class ScriptEnvTest(unittest.TestCase):
 
     def test_a_service_left_out_keeps_the_scripts_default_but_none_turns_it_off(self):
         self.assertNotIn("GANDALF_SERVICE", gb.script_env({}, edges(), nodes()))
-        # set-but-empty is how the script tells "skip the restart" from "use the default"
+        # empty means skip the restart, unset means use the default
         self.assertEqual(gb.script_env({"service": None}, edges(), nodes())["GANDALF_SERVICE"], "")
         self.assertEqual(gb.script_env({"service": ""}, edges(), nodes())["GANDALF_SERVICE"], "")
 
@@ -146,7 +145,7 @@ class ScriptEnvTest(unittest.TestCase):
     def test_s3_none_skips_the_upload_on_purpose(self):
         env = gb.script_env({"s3": None}, edges(), nodes())
 
-        # set-but-empty is how the script tells "no upload, on purpose" from "nobody configured it"
+        # empty means no upload on purpose, unset means nobody configured it
         self.assertEqual(env["GANDALF_S3_BUCKET"], "")
         self.assertNotIn("GANDALF_S3_PREFIX", env)
 
@@ -192,7 +191,7 @@ class SettingsAndReleaseTest(unittest.TestCase):
         self.assertEqual(config.GANDALF_BUILD["root"], "/x")
 
     def test_release_is_what_the_dumper_recorded_under_download(self):
-        # the real shape of a src_dump record, as seen in a hub that dumped tier0_kg
+        # shape of a src_dump record from a hub that dumped tier0_kg
         get_src_dump.return_value.find_one.return_value = {
             "_id": "tier0_kg",
             "download": {"status": "success", "release": "2026_06_21"},
@@ -390,7 +389,7 @@ class PostMergeTest(unittest.TestCase):
 
         self.assertEqual(self.script_output(missing), ["bucket=<unset>"])
         self.assertEqual(self.script_output(switched_off), ["bucket="])
-        # the script decides what a missing bucket means, the builder doesn't second-guess it
+        # the script decides what a missing bucket means; the builder doesn't warn about it
         missing.logger.warning.assert_not_called()
 
     def test_a_script_that_refuses_to_start_fails_the_build_with_its_reasons(self):
