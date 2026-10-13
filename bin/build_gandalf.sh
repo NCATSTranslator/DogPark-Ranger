@@ -4,60 +4,33 @@
 #
 # Builds the Gandalf graph from the tier0 KG collections in MongoDB, compacts
 # it, points the "latest" symlink at it, restarts the local Gandalf service,
-# and uploads the archive to AWS S3. The graph folder and the archive are named
-# after the hub's build (GANDALF_BUILD_NAME), or after a date stamp (MM_DD_YYYY)
-# when it is run by hand.
+# and uploads the archive to AWS S3.
 #
-# Normally started by the hub's GandalfBuilder (hub/databuild/gandalf_builder.py)
-# as the post-merge step of a Gandalf build config. The builder passes every
-# setting below as an environment variable and streams this script's output
-# into the hub's build log. Running it by hand works too: export the same
-# variables first.
-#
-# Before it builds anything it checks its whole configuration and the
-# environment it runs in. When something is missing or can't work, it prints
-# every problem, exits with status 2, and has built, restarted and uploaded
-# nothing. That beats finding out after a 30 minute build.
+# Started by the hub's GandalfBuilder (hub/databuild/gandalf_builder.py) as the
+# post-merge step of a Gandalf build config. Running it by hand works too: export
+# the same variables first.
 #
 # Required:
 #   GANDALF_MONGO_URI          e.g. mongodb://localhost:27017
 #   GANDALF_MONGO_DB           database that holds the two collections below
 #   GANDALF_NODES_COLLECTION   e.g. tier0_kg_nodes
 #   GANDALF_EDGES_COLLECTION   e.g. tier0_kg_edges
-#   GANDALF_S3_BUCKET          bucket for the archive, the name only (no s3://). Set it to an
-#                              empty string to skip the upload on purpose. Unset is an error,
-#                              so a forgotten setting can't silently skip the upload.
+#   GANDALF_S3_BUCKET          bucket for the archive, the name only (no s3://)
 #
-# Optional (the defaults reproduce the previous hand-run script):
+# Optional:
 #   GANDALF_ROOT               /data/dogpark/gandalf   processed/, compacted/ and tmp/ live under it
 #   GANDALF_BUILD_MONGO_BIN    gandalf-build-mongo     use a full path into Gandalf's .venv if it is not on PATH
 #   GANDALF_SERVICE            gandalf.service         set it to an empty string to skip the restart
 #   GANDALF_S3_PREFIX          key prefix inside the bucket
 #   GANDALF_S3_REGION          passed to `aws --region`
 #   GANDALF_S3_PROFILE         passed to `aws --profile`
-#   GANDALF_RELEASE            upstream KGX release the graph is built from (printed, nothing more)
+#   GANDALF_RELEASE            upstream KGX release the graph is built from
 #   GANDALF_BUILD_NAME         name of the build, e.g. tier0_kg_gandalf_20261012_wffqr2d5. When set it names the
-#                              graph folder processed/<name>/ and the archive compacted/<name>.tar.gz (so also
-#                              the S3 key), which keeps every build apart, even two on the same day. Unset: the
-#                              date-based names of the old hand-run script (see GANDALF_BUILD_DATE)
+#                              graph folder processed/<name>/ and the archive compacted/<name>.tar.gz
 #   GANDALF_BUILD_DATE         MM_DD_YYYY stamp for those date-based names, processed/<stamp>/ and
 #                              gandalf_translatorkg_<stamp>.tar.gz (default: today)
 #   GANDALF_SKIP_AWS_CHECK     1 = don't ask AWS who we are up front (for a host that reaches S3 but not STS)
 #
-# In the hub the first four and GANDALF_BUILD_NAME come from the build itself. The rest come from
-# GANDALF_BUILD in config.py: "gandalf_bin" is GANDALF_BUILD_MONGO_BIN, "s3" holds
-# "bucket", "prefix", "region" and "profile" (None means an empty bucket, so no
-# upload), and "service" and "root" are what they say.
-#
-# The checks: the settings above exist and look right, the commands it needs are
-# installed, GANDALF_ROOT is writable, the systemd unit exists and sudo will
-# restart it without a password, and AWS accepts the credentials in use.
-#
-# AWS credentials are not handled here: `aws` uses whatever the user running
-# this script already has (instance role, ~/.aws, or GANDALF_S3_PROFILE).
-# Needs bash 3.2 or newer, so it also runs on a stock macOS shell.
-# Exit status: 0 done, 2 not set up to run (nothing was touched), anything else
-# is the failing step's own status, with an ERROR line saying where.
 # =============================================================================
 
 set -euo pipefail
