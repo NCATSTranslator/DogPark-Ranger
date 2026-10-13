@@ -4,7 +4,9 @@
 #
 # Builds the Gandalf graph from the tier0 KG collections in MongoDB, compacts
 # it, points the "latest" symlink at it, restarts the local Gandalf service,
-# and uploads the archive to AWS S3. Paths are keyed on a date stamp (MM_DD_YYYY).
+# and uploads the archive to AWS S3. The graph folder and the archive are named
+# after the hub's build (GANDALF_BUILD_NAME), or after a date stamp (MM_DD_YYYY)
+# when it is run by hand.
 #
 # Normally started by the hub's GandalfBuilder (hub/databuild/gandalf_builder.py)
 # as the post-merge step of a Gandalf build config. The builder passes every
@@ -34,10 +36,15 @@
 #   GANDALF_S3_REGION          passed to `aws --region`
 #   GANDALF_S3_PROFILE         passed to `aws --profile`
 #   GANDALF_RELEASE            upstream KGX release the graph is built from (printed, nothing more)
-#   GANDALF_BUILD_DATE         MM_DD_YYYY stamp for paths and the archive name (default: today)
+#   GANDALF_BUILD_NAME         name of the build, e.g. tier0_kg_gandalf_20261012_wffqr2d5. When set it names the
+#                              graph folder processed/<name>/ and the archive compacted/<name>.tar.gz (so also
+#                              the S3 key), which keeps every build apart, even two on the same day. Unset: the
+#                              date-based names of the old hand-run script (see GANDALF_BUILD_DATE)
+#   GANDALF_BUILD_DATE         MM_DD_YYYY stamp for those date-based names, processed/<stamp>/ and
+#                              gandalf_translatorkg_<stamp>.tar.gz (default: today)
 #   GANDALF_SKIP_AWS_CHECK     1 = don't ask AWS who we are up front (for a host that reaches S3 but not STS)
 #
-# In the hub the first four come from the build itself. The rest come from
+# In the hub the first four and GANDALF_BUILD_NAME come from the build itself. The rest come from
 # GANDALF_BUILD in config.py: "gandalf_bin" is GANDALF_BUILD_MONGO_BIN, "s3" holds
 # "bucket", "prefix", "region" and "profile" (None means an empty bucket, so no
 # upload), and "service" and "root" are what they say.
@@ -68,10 +75,17 @@ SERVICE="${GANDALF_SERVICE-gandalf.service}"
 S3_BUCKET="${GANDALF_S3_BUCKET-}"
 S3_PREFIX="${GANDALF_S3_PREFIX-}"
 
-BUILD_DIR="${ROOT}/processed/${DATE}"
-PROCESSED_DIR="${BUILD_DIR}/graph_mmap"
+BUILD_NAME="${GANDALF_BUILD_NAME-}"
 ARCHIVE_DIR="${ROOT}/compacted"
-ARCHIVE="${ARCHIVE_DIR}/gandalf_translatorkg_${DATE}.tar.gz"
+if [[ -n "${BUILD_NAME}" ]]; then
+    # the hub's build name is unique, so no build ever writes into another one's folder
+    BUILD_DIR="${ROOT}/processed/${BUILD_NAME}"
+    ARCHIVE="${ARCHIVE_DIR}/${BUILD_NAME}.tar.gz"
+else
+    BUILD_DIR="${ROOT}/processed/${DATE}"
+    ARCHIVE="${ARCHIVE_DIR}/gandalf_translatorkg_${DATE}.tar.gz"
+fi
+PROCESSED_DIR="${BUILD_DIR}/graph_mmap"
 SYMLINK="${ROOT}/processed/latest"
 TMP_DIR="${ROOT}/tmp"
 S3_URI="s3://${S3_BUCKET}/${S3_PREFIX:+${S3_PREFIX%/}/}$(basename "${ARCHIVE}")"
@@ -141,6 +155,14 @@ fi
 date_re='^[0-9]{2}_[0-9]{2}_[0-9]{4}$'
 if [[ ! "${DATE}" =~ ${date_re} ]]; then
     problem "GANDALF_BUILD_DATE must look like MM_DD_YYYY, for example 10_09_2026, because it names folders and the archive. Got '${DATE}'"
+fi
+
+# the build name becomes a folder name and a file name, so it must not be able to point anywhere else
+if [[ -n "${BUILD_NAME}" ]]; then
+    build_name_re='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+    if [[ ! "${BUILD_NAME}" =~ ${build_name_re} || "${#BUILD_NAME}" -gt 200 ]]; then
+        problem "GANDALF_BUILD_NAME '${BUILD_NAME}' can't name a folder and a file: letters, digits, . _ and - only, starting with a letter or digit, at most 200 characters"
+    fi
 fi
 
 if [[ "${ROOT}" != /* ]]; then
@@ -217,11 +239,12 @@ stop_if_problems
 # Never echo credentials that might be embedded in a Mongo URI
 SAFE_URI="$(printf '%s' "${GANDALF_MONGO_URI}" | sed -E 's#//[^/@]*@#//***@#')"
 
-echo "Gandalf build ${DATE}: ${GANDALF_MONGO_DB}.${GANDALF_NODES_COLLECTION} + ${GANDALF_EDGES_COLLECTION} @ ${SAFE_URI}"
+echo "Gandalf build ${BUILD_NAME:-${DATE}}: ${GANDALF_MONGO_DB}.${GANDALF_NODES_COLLECTION} + ${GANDALF_EDGES_COLLECTION} @ ${SAFE_URI}"
 if [[ -n "${GANDALF_RELEASE:-}" ]]; then
     echo "Upstream KGX release: ${GANDALF_RELEASE}"
 fi
 echo "Output:   ${PROCESSED_DIR}"
+echo "Archive:  ${ARCHIVE}"
 if [[ -n "${SERVICE}" ]]; then
     echo "Restart:  ${SERVICE}"
 else

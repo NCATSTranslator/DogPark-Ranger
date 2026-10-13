@@ -98,8 +98,12 @@ def kgx_release_for(data_name):
     return str(release) if release else None
 
 
-def script_env(settings, edge_backend, node_backend, release=None):
-    """The ``GANDALF_*`` variables ``build_gandalf.sh`` reads (see its header)."""
+def script_env(settings, edge_backend, node_backend, release=None, build_name=None):
+    """The ``GANDALF_*`` variables ``build_gandalf.sh`` reads (see its header).
+
+    ``build_name`` is the hub's name for this build (``tier0_kg_gandalf_20261012_wffqr2d5``). The script
+    names its graph folder and its archive after it, so every build keeps to its own files.
+    """
     if (edge_backend.args, edge_backend.dbs) != (node_backend.args, node_backend.dbs):
         raise GandalfBuildError(
             "gandalf-build-mongo reads nodes and edges from a single database, but this build keeps "
@@ -114,6 +118,8 @@ def script_env(settings, edge_backend, node_backend, release=None):
     }
     if release:
         env["GANDALF_RELEASE"] = str(release)
+    if build_name:
+        env["GANDALF_BUILD_NAME"] = str(build_name)
     if settings.get("root"):
         env["GANDALF_ROOT"] = str(settings["root"])
     if settings.get("gandalf_bin"):
@@ -236,7 +242,11 @@ class GandalfBuilder(LinkDataBuilder):
         build_doc = self.source_backend.build.find_one({"_id": self.target_name})
         edge_backend, node_backend, data_name = resolve_kg_build_backends(build_doc)
         release = kgx_release_for(data_name)
-        env = {**os.environ, "PYTHONUNBUFFERED": "1", **script_env(settings, edge_backend, node_backend, release)}
+        env = {
+            **os.environ,
+            "PYTHONUNBUFFERED": "1",
+            **script_env(settings, edge_backend, node_backend, release, build_name=self.target_name),
+        }
 
         self.logger.info(
             "Running %s: nodes=%s.%s edges=%s.%s KGX release=%s",

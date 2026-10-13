@@ -111,6 +111,13 @@ class ScriptEnvTest(unittest.TestCase):
         self.assertEqual(gb.script_env({}, edges(), nodes(), "2026_06_21")["GANDALF_RELEASE"], "2026_06_21")
         self.assertNotIn("GANDALF_RELEASE", gb.script_env({}, edges(), nodes(), None))
 
+    def test_adds_the_build_name_only_when_known(self):
+        env = gb.script_env({}, edges(), nodes(), build_name="tier0_kg_gandalf_20261012_wffqr2d5")
+
+        # the script names its graph folder and its archive after it
+        self.assertEqual(env["GANDALF_BUILD_NAME"], "tier0_kg_gandalf_20261012_wffqr2d5")
+        self.assertNotIn("GANDALF_BUILD_NAME", gb.script_env({}, edges(), nodes()))
+
     def test_maps_the_optional_settings(self):
         env = gb.script_env(
             {"root": "/data/g", "gandalf_bin": "/venv/bin/gandalf-build-mongo", "service": "g.service"},
@@ -348,6 +355,7 @@ class PostMergeTest(unittest.TestCase):
         self.assertEqual(
             self.script_output(builder),
             [
+                "GANDALF_BUILD_NAME=tier0_kg_gandalf_20261009_abcd",
                 "GANDALF_EDGES_COLLECTION=tier0_kg_edges",
                 "GANDALF_MONGO_DB=dogpark_src",
                 "GANDALF_MONGO_URI=mongodb://localhost:27017",

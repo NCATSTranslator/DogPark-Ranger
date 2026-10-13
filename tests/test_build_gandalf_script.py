@@ -248,6 +248,63 @@ class OptionalStepsTest(BuildGandalfScriptTest):
         self.assertTrue(self.build_calls()[0].startswith("gandalf-build-mongo --mongo-uri"))
 
 
+class BuildNameTest(BuildGandalfScriptTest):
+    """The hub's build name, when given, replaces the date stamp in the folder and archive names."""
+
+    NAME = "tier0_kg_gandalf_20261012_wffqr2d5"
+
+    def test_the_build_name_names_the_graph_folder_the_archive_and_the_s3_key(self):
+        result = self.run_script(
+            GANDALF_BUILD_NAME=self.NAME, GANDALF_S3_BUCKET="my-bucket", GANDALF_S3_PREFIX="gandalf"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        graph = self.root / "processed" / self.NAME / "graph_mmap"
+        self.assertEqual((graph / "graph.bin").read_text().strip(), "graph")
+        archive = self.root / "compacted" / f"{self.NAME}.tar.gz"
+        with tarfile.open(archive) as tar:
+            # whoever unpacks it still finds a graph_mmap/ folder, as before
+            self.assertIn("graph_mmap/graph.bin", tar.getnames())
+        self.assertEqual((self.root / "processed" / "latest").resolve(), graph.resolve())
+        self.assertIn(f"aws s3 cp {archive} s3://my-bucket/gandalf/{self.NAME}.tar.gz --no-progress", self.calls())
+        # nothing is named after the date any more
+        self.assertFalse((self.root / "processed" / DATE).exists())
+        self.assertFalse(self.archive.exists())
+
+    def test_two_builds_on_the_same_day_keep_to_their_own_folders_and_archives(self):
+        names = ("tier0_kg_gandalf_20261012_aaaaaaaa", "tier0_kg_gandalf_20261012_bbbbbbbb")
+
+        results = [self.run_script(GANDALF_BUILD_NAME=name) for name in names]
+
+        self.assertEqual([result.returncode for result in results], [0, 0], results[-1].stdout + results[-1].stderr)
+        for name in names:
+            self.assertTrue((self.root / "processed" / name / "graph_mmap" / "graph.bin").is_file(), name)
+            self.assertTrue((self.root / "compacted" / f"{name}.tar.gz").is_file(), name)
+        # latest follows the build that ran last
+        latest = self.root / "processed" / "latest"
+        self.assertEqual(latest.resolve(), (self.root / "processed" / names[1] / "graph_mmap").resolve())
+
+    def test_without_a_build_name_the_date_based_names_stay(self):
+        for unset in (None, ""):
+            with self.subTest(build_name=unset):
+                # each case starts from nothing, or it would pass on the files the case before it left behind
+                shutil.rmtree(self.root, ignore_errors=True)
+
+                result = self.run_script(GANDALF_BUILD_NAME=unset)
+
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertTrue((self.root / "processed" / DATE / "graph_mmap" / "graph.bin").is_file())
+                self.assertEqual(sorted(path.name for path in (self.root / "processed").iterdir()), [DATE, "latest"])
+                self.assertEqual([path.name for path in (self.root / "compacted").iterdir()], [self.archive.name])
+
+    def test_the_plan_names_the_build_and_its_files(self):
+        result = self.run_script(GANDALF_BUILD_NAME=self.NAME)
+
+        self.assertIn(f"Gandalf build {self.NAME}: dogpark_src.", result.stdout)
+        self.assertIn(f"Output:   {self.root}/processed/{self.NAME}/graph_mmap", result.stdout)
+        self.assertIn(f"Archive:  {self.root}/compacted/{self.NAME}.tar.gz", result.stdout)
+
+
 class ConfigurationCheckTest(BuildGandalfScriptTest):
     """The script refuses to start, having touched nothing, when it can't possibly finish."""
 
@@ -307,6 +364,11 @@ class ConfigurationCheckTest(BuildGandalfScriptTest):
             "region that is not one": ({"GANDALF_S3_BUCKET": "my-bucket", "GANDALF_S3_REGION": "US West 2"}, "is not a region name"),
             "date in the wrong format": ({"GANDALF_BUILD_DATE": "2026-10-09"}, "MM_DD_YYYY"),
             "relative root": ({"GANDALF_ROOT": "relative/dir"}, "must be an absolute path"),
+            "build name that climbs out of its folder": ({"GANDALF_BUILD_NAME": "../escape"}, "GANDALF_BUILD_NAME"),
+            "build name with a slash": ({"GANDALF_BUILD_NAME": "a/b"}, "GANDALF_BUILD_NAME"),
+            "build name with a space": ({"GANDALF_BUILD_NAME": "has space"}, "GANDALF_BUILD_NAME"),
+            "build name starting with a dash": ({"GANDALF_BUILD_NAME": "-rf"}, "GANDALF_BUILD_NAME"),
+            "build name that is too long": ({"GANDALF_BUILD_NAME": "x" * 201}, "GANDALF_BUILD_NAME"),
         }
         for name, (overrides, expected) in cases.items():
             with self.subTest(case=name):
