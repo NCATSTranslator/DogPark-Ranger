@@ -14,6 +14,7 @@ there is one (3.2 on macOS), the oldest bash it has to support.
 import os
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import time
@@ -25,6 +26,7 @@ BASH = "/bin/bash" if os.path.exists("/bin/bash") else shutil.which("bash")
 # what the script and the stubs themselves need, and nothing else
 BASIC_TOOLS = (
     "bash", "env", "tar", "gzip", "gunzip", "ln", "mkdir", "date", "basename", "dirname", "sed", "cat", "rm", "id",
+    "cp", "chmod",
 )
 
 STUBS = {
@@ -75,6 +77,8 @@ class BuildGandalfScriptTest(unittest.TestCase):
             real = BASH if tool == "bash" else shutil.which(tool)
             if real:
                 (self.toolbox / tool).symlink_to(real)
+        # the script parses graph-metadata.json with it when it can find one
+        (self.toolbox / "python3").symlink_to(os.path.realpath(sys.executable))
         self.root = self.tmp / "gandalf"
         self.log = self.tmp / "stub.log"
         for name, body in STUBS.items():
@@ -305,6 +309,67 @@ class BuildNameTest(BuildGandalfScriptTest):
         self.assertIn(f"Archive:  {self.root}/compacted/{self.NAME}.tar.gz", result.stdout)
 
 
+class GraphMetadataTest(BuildGandalfScriptTest):
+    """A graph-metadata.json, when given, is copied into the graph folder, so the archive carries it too."""
+
+    DOCUMENT = '{\n  "name": "translator_kg",\n  "version": "2026_06_21"\n}'
+
+    def setUp(self):
+        super().setUp()
+        self.metadata = self.tmp / "graph-metadata.json"
+        self.metadata.write_text(self.DOCUMENT)
+
+    def test_the_file_goes_into_the_graph_folder_and_the_archive(self):
+        result = self.run_script(GANDALF_GRAPH_METADATA=str(self.metadata))
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        graph = self.root / "processed" / DATE / "graph_mmap"
+        self.assertEqual((graph / "graph-metadata.json").read_text(), self.DOCUMENT)
+        with tarfile.open(self.archive) as archive:
+            self.assertEqual(archive.extractfile("graph_mmap/graph-metadata.json").read().decode(), self.DOCUMENT)
+
+    def test_it_is_added_after_the_build_and_before_the_archive_is_made(self):
+        result = self.run_script(GANDALF_GRAPH_METADATA=str(self.metadata))
+
+        out = result.stdout
+        self.assertLess(out.index("[1/5]"), out.index("Adding graph-metadata.json"))
+        self.assertLess(out.index("Adding graph-metadata.json"), out.index("[2/5]"))
+
+    def test_without_it_the_graph_folder_has_no_metadata_file(self):
+        result = self.run_script()
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.root / "processed" / DATE / "graph_mmap" / "graph-metadata.json").exists())
+        with tarfile.open(self.archive) as archive:
+            self.assertNotIn("graph_mmap/graph-metadata.json", archive.getnames())
+
+    def test_the_copy_is_readable_by_everyone_whatever_the_given_file_allows(self):
+        self.metadata.chmod(0o600)
+
+        self.run_script(GANDALF_GRAPH_METADATA=str(self.metadata))
+
+        copy = self.root / "processed" / DATE / "graph_mmap" / "graph-metadata.json"
+        self.assertEqual(copy.stat().st_mode & 0o777, 0o644)
+
+    def test_the_plan_names_the_file_or_says_there_is_none(self):
+        with_file = self.run_script(GANDALF_GRAPH_METADATA=str(self.metadata))
+        without = self.run_script()
+
+        self.assertIn(
+            f"Metadata: {self.metadata} -> {self.root}/processed/{DATE}/graph_mmap/graph-metadata.json",
+            with_file.stdout,
+        )
+        self.assertIn("Metadata: none (GANDALF_GRAPH_METADATA is not set)", without.stdout)
+
+    def test_the_json_check_is_skipped_not_failed_on_a_host_without_python3(self):
+        (self.toolbox / "python3").unlink()
+        self.metadata.write_text("not json")
+
+        result = self.run_script(GANDALF_GRAPH_METADATA=str(self.metadata))
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
 class ConfigurationCheckTest(BuildGandalfScriptTest):
     """The script refuses to start, having touched nothing, when it can't possibly finish."""
 
@@ -353,6 +418,10 @@ class ConfigurationCheckTest(BuildGandalfScriptTest):
         self.assertIn('"s3": None', result.stderr)
 
     def test_values_that_cannot_work_are_refused_with_the_reason(self):
+        empty = self.tmp / "empty.json"
+        empty.write_text("")
+        broken = self.tmp / "broken.json"
+        broken.write_text('{"name": ')
         cases = {
             "mongo uri without a scheme": ({"GANDALF_MONGO_URI": "localhost:27017"}, "must start with mongodb://"),
             "bucket given as an s3 url": ({"GANDALF_S3_BUCKET": "s3://my-bucket"}, "is not a bucket name"),
@@ -369,6 +438,19 @@ class ConfigurationCheckTest(BuildGandalfScriptTest):
             "build name with a space": ({"GANDALF_BUILD_NAME": "has space"}, "GANDALF_BUILD_NAME"),
             "build name starting with a dash": ({"GANDALF_BUILD_NAME": "-rf"}, "GANDALF_BUILD_NAME"),
             "build name that is too long": ({"GANDALF_BUILD_NAME": "x" * 201}, "GANDALF_BUILD_NAME"),
+            "graph metadata file that does not exist": (
+                {"GANDALF_GRAPH_METADATA": str(self.tmp / "nope.json")},
+                "not a readable, non-empty file",
+            ),
+            "graph metadata file that is empty": (
+                {"GANDALF_GRAPH_METADATA": str(empty)},
+                "not a readable, non-empty file",
+            ),
+            "graph metadata that is a folder": (
+                {"GANDALF_GRAPH_METADATA": str(self.tmp)},
+                "not a readable, non-empty file",
+            ),
+            "graph metadata file that is not JSON": ({"GANDALF_GRAPH_METADATA": str(broken)}, "is not valid JSON"),
         }
         for name, (overrides, expected) in cases.items():
             with self.subTest(case=name):
@@ -398,6 +480,17 @@ class ConfigurationCheckTest(BuildGandalfScriptTest):
         self.assertIn("can't be created or written", result.stderr)
         self.assertEqual(self.build_calls(), [])
         self.assertFalse((locked / "gandalf").exists())
+
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root can read anything")
+    def test_a_graph_metadata_file_nobody_can_read_is_caught_up_front(self):
+        locked = self.tmp / "locked.json"
+        locked.write_text("{}")
+        locked.chmod(0o000)
+        self.addCleanup(locked.chmod, 0o600)
+
+        result = self.run_script(GANDALF_GRAPH_METADATA=str(locked))
+
+        self.assert_refused(result, "not a readable, non-empty file")
 
     def test_a_systemd_unit_that_does_not_exist_is_caught_before_the_build(self):
         result = self.run_script(STUB_NO_UNIT="1")

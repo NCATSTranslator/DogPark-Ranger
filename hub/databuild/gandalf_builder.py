@@ -7,6 +7,12 @@ which builds the Gandalf graph, compacts it, updates the ``latest`` symlink, res
 Gandalf service and uploads the archive to S3. The script's output is streamed line by
 line into the build log. The hub must run on the same host as Gandalf.
 
+The graph folder also gets the source's ``graph-metadata.json``, which Gandalf serves at
+``/metadata``. ``KgDumper`` stores that document in ``src_dump``. The hook writes it to a
+temporary file and passes the path to the script, which copies it next to the graph. The
+build fails before it starts when no document is stored, or when the stored one belongs to
+a different release than the data that was uploaded.
+
 Setup
 -----
 1. Create a build config for this class, once, from the hub console::
@@ -40,18 +46,22 @@ The Mongo collections come from ``resolve_kg_build_backends()``, which ``KGXInde
 uses, so the graph and the ES index of the same data are built from the same collections.
 """
 
+import json
 import os
 import signal
 import subprocess
+import tempfile
 import threading
 import time
 from collections import deque
+from contextlib import contextmanager
 from pathlib import Path
 
 from biothings.hub.databuild.builder import BuilderException, LinkDataBuilder
 from biothings.utils.hub_db import get_src_dump
 
 from hub.dataindex.indexer import resolve_kg_build_backends
+from hub.dataload.kgDumper import KGX_METADATA_FIELD
 
 DEFAULT_SCRIPT = Path(__file__).resolve().parents[2] / "bin" / "build_gandalf.sh"
 # A full build of the real graph takes about 1.5 hours. The timeout only stops a hung
@@ -93,11 +103,49 @@ def kgx_release_for(data_name):
     return str(release) if release else None
 
 
-def script_env(settings, edge_backend, node_backend, release=None, build_name=None):
+def graph_metadata_for(data_name, uploader_name):
+    """The ``graph-metadata.json`` document ``KgDumper`` stored for this source.
+
+    It is kept at ``src_dump[<source>]["kgx_metadata"]["graph"]``, for the latest dump only.
+    Raises ``GandalfBuildError`` when there is none, or when the latest dump is a different
+    release than the one ``uploader_name`` (the uploaded collection) was loaded from.
+    """
+    record = get_src_dump().find_one({"_id": data_name}) or {}
+    document = (record.get(KGX_METADATA_FIELD) or {}).get("graph")
+    if not isinstance(document, dict):
+        raise GandalfBuildError(
+            f"No graph-metadata.json is stored for {data_name!r}. KgDumper stores it when it dumps a release "
+            f"and backfills it at the next dump check of a release it already has, so run a dump check for "
+            f"{data_name!r} and build again."
+        )
+    dumped = (record.get("download") or {}).get("release")
+    uploaded = (((record.get("upload") or {}).get("jobs") or {}).get(uploader_name) or {}).get("release")
+    if dumped and uploaded and str(dumped) != str(uploaded):
+        raise GandalfBuildError(
+            f"{data_name!r} was last dumped as release {dumped}, but {uploader_name} was uploaded from release "
+            f"{uploaded}, so the stored graph-metadata.json describes a different release than the data. "
+            f"Upload {data_name!r} again and build after that."
+        )
+    return document
+
+
+@contextmanager
+def graph_metadata_file(document):
+    """A temporary ``graph-metadata.json`` holding ``document``, removed when the block ends."""
+    with tempfile.TemporaryDirectory(prefix="gandalf-") as folder:
+        path = Path(folder) / "graph-metadata.json"
+        # the same layout as the file KGX publishes
+        path.write_text(json.dumps(document, indent=2), encoding="utf-8")
+        path.chmod(0o644)
+        yield path
+
+
+def script_env(settings, edge_backend, node_backend, release=None, build_name=None, graph_metadata=None):
     """The ``GANDALF_*`` variables ``build_gandalf.sh`` reads (listed in its header).
 
     ``build_name`` is the hub's name for the build, for example ``tier0_kg_gandalf_20261012_wffqr2d5``.
-    The script names the graph folder and the archive after it.
+    The script names the graph folder and the archive after it. ``graph_metadata`` is the path of the
+    ``graph-metadata.json`` the script copies into the graph folder.
     """
     if (edge_backend.args, edge_backend.dbs) != (node_backend.args, node_backend.dbs):
         raise GandalfBuildError(
@@ -115,6 +163,8 @@ def script_env(settings, edge_backend, node_backend, release=None, build_name=No
         env["GANDALF_RELEASE"] = str(release)
     if build_name:
         env["GANDALF_BUILD_NAME"] = str(build_name)
+    if graph_metadata:
+        env["GANDALF_GRAPH_METADATA"] = str(graph_metadata)
     if settings.get("root"):
         env["GANDALF_ROOT"] = str(settings["root"])
     if settings.get("gandalf_bin"):
@@ -214,8 +264,8 @@ class GandalfBuilder(LinkDataBuilder):
     """Link build that builds, compacts, deploys and uploads the Gandalf graph.
 
     The merge is a link to the uploaded source, as in ``LinkDataBuilder``. The post-merge
-    step runs ``bin/build_gandalf.sh`` with this build's Mongo collections and streams its
-    output into the build log.
+    step runs ``bin/build_gandalf.sh`` with this build's Mongo collections and the source's
+    ``graph-metadata.json``, and streams its output into the build log.
     """
 
     def post_merge(self, source_names, batch_size, job_manager):
@@ -236,26 +286,36 @@ class GandalfBuilder(LinkDataBuilder):
         build_doc = self.source_backend.build.find_one({"_id": self.target_name})
         edge_backend, node_backend, data_name = resolve_kg_build_backends(build_doc)
         release = kgx_release_for(data_name)
-        env = {
-            **os.environ,
-            "PYTHONUNBUFFERED": "1",
-            **script_env(settings, edge_backend, node_backend, release, build_name=self.target_name),
-        }
+        metadata = graph_metadata_for(data_name, edge_backend.col)
+        with graph_metadata_file(metadata) as metadata_file:
+            env = {
+                **os.environ,
+                "PYTHONUNBUFFERED": "1",
+                **script_env(
+                    settings,
+                    edge_backend,
+                    node_backend,
+                    release,
+                    build_name=self.target_name,
+                    graph_metadata=metadata_file,
+                ),
+            }
 
-        self.logger.info(
-            "Running %s: nodes=%s.%s edges=%s.%s KGX release=%s",
-            script,
-            node_backend.dbs,
-            node_backend.col,
-            edge_backend.dbs,
-            edge_backend.col,
-            release or "unknown",
-        )
-        run_streaming(
-            ["bash", str(script)],
-            env,
-            lambda line: self.logger.info("[gandalf] %s", line),
-            timeout=settings.get("timeout", DEFAULT_TIMEOUT_SECONDS),
-        )
+            self.logger.info(
+                "Running %s: nodes=%s.%s edges=%s.%s KGX release=%s graph-metadata version=%s",
+                script,
+                node_backend.dbs,
+                node_backend.col,
+                edge_backend.dbs,
+                edge_backend.col,
+                release or "unknown",
+                metadata.get("version", "unknown"),
+            )
+            run_streaming(
+                ["bash", str(script)],
+                env,
+                lambda line: self.logger.info("[gandalf] %s", line),
+                timeout=settings.get("timeout", DEFAULT_TIMEOUT_SECONDS),
+            )
         self.logger.info("Gandalf build script finished")
         return {"gandalf_build": {"release": release, "nodes": node_backend.col, "edges": edge_backend.col}}

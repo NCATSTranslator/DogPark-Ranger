@@ -7,6 +7,7 @@ bash, pipes, timeouts and process-group kills.
 """
 
 import inspect
+import json
 import os
 import shutil
 import sys
@@ -27,9 +28,16 @@ class FakeLinkDataBuilder:
     """Stands in for biothings' LinkDataBuilder. GandalfBuilder only adds post_merge."""
 
 
+class FakeLastModifiedHTTPDumper:
+    """Stands in for biothings' LastModifiedHTTPDumper, the base class of KgDumper."""
+
+
 fake_builder_module = types.ModuleType("biothings.hub.databuild.builder")
 fake_builder_module.BuilderException = FakeBuilderException
 fake_builder_module.LinkDataBuilder = FakeLinkDataBuilder
+
+fake_dumper_module = types.ModuleType("biothings.hub.dataload.dumper")
+fake_dumper_module.LastModifiedHTTPDumper = FakeLastModifiedHTTPDumper
 
 fake_hub_db_module = types.ModuleType("biothings.utils.hub_db")
 fake_hub_db_module.get_src_dump = mock.Mock(name="get_src_dump")
@@ -46,6 +54,8 @@ with mock.patch.dict(
         "biothings.hub": types.ModuleType("biothings.hub"),
         "biothings.hub.databuild": types.ModuleType("biothings.hub.databuild"),
         "biothings.hub.databuild.builder": fake_builder_module,
+        "biothings.hub.dataload": types.ModuleType("biothings.hub.dataload"),
+        "biothings.hub.dataload.dumper": fake_dumper_module,
         "biothings.utils": types.ModuleType("biothings.utils"),
         "biothings.utils.hub_db": fake_hub_db_module,
         "hub.dataindex.indexer": fake_indexer_module,
@@ -55,6 +65,20 @@ with mock.patch.dict(
     from hub.databuild import gandalf_builder as gb
 
 get_src_dump = fake_hub_db_module.get_src_dump
+
+GRAPH_METADATA = {"name": "translator_kg", "version": "2026_06_21"}
+
+
+def src_dump_record(graph=GRAPH_METADATA, dumped="2026_06_21", uploaded="2026_06_21"):
+    """A src_dump record shaped like the real one: the dump, the upload and KgDumper's document."""
+    record = {
+        "_id": "tier0_kg",
+        "download": {"release": dumped},
+        "upload": {"jobs": {"tier0_kg_edges": {"release": uploaded}}},
+    }
+    if graph is not None:
+        record["kgx_metadata"] = {"graph": graph}
+    return record
 
 
 def backend(col, dbs="dogpark_src", host="localhost", port=27017):
@@ -116,6 +140,12 @@ class ScriptEnvTest(unittest.TestCase):
         # the script names the graph folder and the archive after it
         self.assertEqual(env["GANDALF_BUILD_NAME"], "tier0_kg_gandalf_20261012_wffqr2d5")
         self.assertNotIn("GANDALF_BUILD_NAME", gb.script_env({}, edges(), nodes()))
+
+    def test_adds_the_graph_metadata_path_only_when_given(self):
+        env = gb.script_env({}, edges(), nodes(), graph_metadata="/tmp/gandalf-x/graph-metadata.json")
+
+        self.assertEqual(env["GANDALF_GRAPH_METADATA"], "/tmp/gandalf-x/graph-metadata.json")
+        self.assertNotIn("GANDALF_GRAPH_METADATA", gb.script_env({}, edges(), nodes()))
 
     def test_maps_the_optional_settings(self):
         env = gb.script_env(
@@ -213,6 +243,104 @@ class SettingsAndReleaseTest(unittest.TestCase):
                 self.assertIsNone(gb.kgx_release_for("tier0_kg"))
         get_src_dump.side_effect = RuntimeError("no mongo")
         self.assertIsNone(gb.kgx_release_for("tier0_kg"))
+
+
+class ScriptContractTest(unittest.TestCase):
+    def test_the_script_reads_every_variable_the_builder_sets(self):
+        env = gb.script_env(
+            {
+                "root": "/data/g",
+                "gandalf_bin": "/venv/bin/gandalf-build-mongo",
+                "service": "g.service",
+                "s3": {"bucket": "b", "prefix": "p", "region": "r", "profile": "x"},
+            },
+            edges(),
+            nodes(),
+            release="2026_06_21",
+            build_name="tier0_kg_gandalf_20261012_abcd",
+            graph_metadata="/tmp/graph-metadata.json",
+        )
+
+        script = gb.DEFAULT_SCRIPT.read_text()
+        for name in env:
+            with self.subTest(variable=name):
+                # the whole name, so GANDALF_GRAPH_METADATA_FILE does not pass for GANDALF_GRAPH_METADATA
+                self.assertRegex(script, rf"(?<![A-Z0-9_]){name}(?![A-Z0-9_])")
+
+
+class GraphMetadataForTest(unittest.TestCase):
+    def setUp(self):
+        get_src_dump.reset_mock(return_value=True, side_effect=True)
+
+    def stored(self, record):
+        get_src_dump.return_value.find_one.return_value = record
+
+    def test_returns_the_document_kgdumper_stored(self):
+        self.stored(src_dump_record())
+
+        self.assertEqual(gb.graph_metadata_for("tier0_kg", "tier0_kg_edges"), GRAPH_METADATA)
+        get_src_dump.return_value.find_one.assert_called_once_with({"_id": "tier0_kg"})
+
+    def test_a_source_without_the_document_is_refused_and_told_what_to_do(self):
+        for record in (src_dump_record(graph=None), {"_id": "tier0_kg"}, None, src_dump_record(graph="not an object")):
+            with self.subTest(record=record):
+                self.stored(record)
+
+                with self.assertRaises(gb.GandalfBuildError) as caught:
+                    gb.graph_metadata_for("tier0_kg", "tier0_kg_edges")
+
+                self.assertIn("No graph-metadata.json is stored for 'tier0_kg'", str(caught.exception))
+                self.assertIn("dump check", str(caught.exception))
+
+    def test_a_document_from_another_release_than_the_uploaded_data_is_refused(self):
+        self.stored(src_dump_record(dumped="2026_07_20", uploaded="2026_06_21"))
+
+        with self.assertRaises(gb.GandalfBuildError) as caught:
+            gb.graph_metadata_for("tier0_kg", "tier0_kg_edges")
+
+        self.assertIn("last dumped as release 2026_07_20", str(caught.exception))
+        self.assertIn("uploaded from release 2026_06_21", str(caught.exception))
+
+    def test_an_unknown_uploaded_release_is_not_a_mismatch(self):
+        for uploaded in (None, ""):
+            with self.subTest(uploaded=uploaded):
+                self.stored(src_dump_record(uploaded=uploaded))
+
+                self.assertEqual(gb.graph_metadata_for("tier0_kg", "tier0_kg_edges"), GRAPH_METADATA)
+        self.stored(src_dump_record())
+        self.assertEqual(gb.graph_metadata_for("tier0_kg", "a_collection_with_no_upload_job"), GRAPH_METADATA)
+
+    def test_a_lookup_error_is_not_swallowed(self):
+        # unlike kgx_release_for, which only feeds the log, the build needs this document
+        get_src_dump.side_effect = RuntimeError("no mongo")
+
+        with self.assertRaises(RuntimeError):
+            gb.graph_metadata_for("tier0_kg", "tier0_kg_edges")
+
+
+class GraphMetadataFileTest(unittest.TestCase):
+    def test_holds_the_document_while_the_block_runs_and_is_gone_after(self):
+        with gb.graph_metadata_file(GRAPH_METADATA) as path:
+            self.assertEqual(path.name, "graph-metadata.json")
+            self.assertEqual(json.loads(path.read_text()), GRAPH_METADATA)
+            self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+            folder = path.parent
+
+        self.assertFalse(folder.exists())
+
+    def test_is_removed_when_the_block_fails(self):
+        with self.assertRaises(RuntimeError):
+            with gb.graph_metadata_file(GRAPH_METADATA) as path:
+                folder = path.parent
+                raise RuntimeError("the script failed")
+
+        self.assertFalse(folder.exists())
+
+    def test_uses_the_layout_of_the_file_kgx_publishes(self):
+        with gb.graph_metadata_file({"name": "x", "tags": [1, 2]}) as path:
+            text = path.read_text()
+
+        self.assertEqual(text, '{\n  "name": "x",\n  "tags": [\n    1,\n    2\n  ]\n}')
 
 
 class RunStreamingTest(unittest.TestCase):
@@ -336,6 +464,7 @@ class PostMergeTest(unittest.TestCase):
                 gb, "resolve_kg_build_backends", return_value=(edges(), nodes(), "tier0_kg")
             ),
             mock.patch.object(gb, "kgx_release_for", return_value=release),
+            mock.patch.object(gb, "graph_metadata_for", return_value=GRAPH_METADATA),
         ]
         for patch in patches:
             patch.start()
@@ -351,8 +480,12 @@ class PostMergeTest(unittest.TestCase):
 
         result = builder.post_merge(["tier0_kg_edges"], 100000, job_manager=None)
 
+        output = self.script_output(builder)
+        # the temporary file's folder is different on every run, so only its name is checked
+        metadata_path = next(line for line in output if line.startswith("GANDALF_GRAPH_METADATA="))
+        self.assertEqual(Path(metadata_path.split("=", 1)[1]).name, "graph-metadata.json")
         self.assertEqual(
-            self.script_output(builder),
+            [line for line in output if not line.startswith("GANDALF_GRAPH_METADATA=")],
             [
                 "GANDALF_BUILD_NAME=tier0_kg_gandalf_20261009_abcd",
                 "GANDALF_EDGES_COLLECTION=tier0_kg_edges",
@@ -369,6 +502,40 @@ class PostMergeTest(unittest.TestCase):
         )
         builder.register_status.assert_not_called()
         builder.source_backend.build.find_one.assert_called_once_with({"_id": builder.target_name})
+
+    def test_the_script_gets_the_stored_document_in_a_file_that_is_removed_afterwards(self):
+        script = self.make_script('echo "path=${GANDALF_GRAPH_METADATA}"\ncat "${GANDALF_GRAPH_METADATA}"\n')
+        builder = self.make_builder({"script": str(script)})
+
+        builder.post_merge([], 1, None)
+
+        output = self.script_output(builder)
+        path = Path(output[0].split("=", 1)[1])
+        self.assertEqual(json.loads("\n".join(output[1:])), GRAPH_METADATA)
+        self.assertFalse(path.exists(), "the file must not outlive the script")
+        gb.graph_metadata_for.assert_called_once_with("tier0_kg", "tier0_kg_edges")
+
+    def test_the_file_is_removed_when_the_script_fails(self):
+        script = self.make_script('echo "path=${GANDALF_GRAPH_METADATA}"\nexit 9\n')
+        builder = self.make_builder({"script": str(script)})
+
+        with self.assertRaises(gb.GandalfBuildError):
+            builder.post_merge([], 1, None)
+
+        path = Path(self.script_output(builder)[0].split("=", 1)[1])
+        self.assertFalse(path.exists())
+
+    def test_a_missing_document_fails_the_build_before_the_script_runs(self):
+        script = self.make_script("echo should-not-run\n")
+        builder = self.make_builder({"script": str(script)})
+        gb.graph_metadata_for.side_effect = gb.GandalfBuildError("No graph-metadata.json is stored for 'tier0_kg'.")
+
+        with self.assertRaises(gb.GandalfBuildError):
+            builder.post_merge([], 1, None)
+
+        self.assertEqual(self.script_output(builder), [])
+        builder.register_status.assert_called_once()
+        self.assertIn("No graph-metadata.json is stored", builder.register_status.call_args.kwargs["job"]["err"])
 
     def test_the_script_inherits_the_hubs_environment(self):
         script = self.make_script('echo "path_seen=${PATH:+yes}"\n')

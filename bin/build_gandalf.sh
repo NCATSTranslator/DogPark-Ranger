@@ -25,6 +25,7 @@
 #   GANDALF_S3_REGION          passed to `aws --region`
 #   GANDALF_S3_PROFILE         passed to `aws --profile`
 #   GANDALF_RELEASE            upstream KGX release the graph is built from
+#   GANDALF_GRAPH_METADATA     path of a graph-metadata.json to copy into the graph folder, so the archive has it
 #   GANDALF_BUILD_NAME         name of the build, e.g. tier0_kg_gandalf_20261012_wffqr2d5. When set it names the
 #                              graph folder processed/<name>/ and the archive compacted/<name>.tar.gz
 #   GANDALF_BUILD_DATE         MM_DD_YYYY stamp for those date-based names, processed/<stamp>/ and
@@ -47,6 +48,7 @@ BUILD_BIN="${GANDALF_BUILD_MONGO_BIN:-gandalf-build-mongo}"
 SERVICE="${GANDALF_SERVICE-gandalf.service}"
 S3_BUCKET="${GANDALF_S3_BUCKET-}"
 S3_PREFIX="${GANDALF_S3_PREFIX-}"
+GRAPH_METADATA="${GANDALF_GRAPH_METADATA-}"
 
 BUILD_NAME="${GANDALF_BUILD_NAME-}"
 ARCHIVE_DIR="${ROOT}/compacted"
@@ -138,6 +140,15 @@ if [[ -n "${BUILD_NAME}" ]]; then
     fi
 fi
 
+# Gandalf parses graph-metadata.json when it loads the graph, so a broken file would stop the service
+if [[ -n "${GRAPH_METADATA}" ]]; then
+    if [[ ! -f "${GRAPH_METADATA}" || ! -s "${GRAPH_METADATA}" || ! -r "${GRAPH_METADATA}" ]]; then
+        problem "GANDALF_GRAPH_METADATA ${GRAPH_METADATA} is not a readable, non-empty file"
+    elif have python3 && ! python3 -c 'import json, sys; json.load(open(sys.argv[1], encoding="utf-8"))' "${GRAPH_METADATA}" > /dev/null 2>&1; then
+        problem "GANDALF_GRAPH_METADATA ${GRAPH_METADATA} is not valid JSON, and Gandalf fails to load a graph folder whose graph-metadata.json it can't parse"
+    fi
+fi
+
 if [[ "${ROOT}" != /* ]]; then
     problem "GANDALF_ROOT must be an absolute path. Got '${ROOT}'"
 else
@@ -218,6 +229,11 @@ if [[ -n "${GANDALF_RELEASE:-}" ]]; then
 fi
 echo "Output:   ${PROCESSED_DIR}"
 echo "Archive:  ${ARCHIVE}"
+if [[ -n "${GRAPH_METADATA}" ]]; then
+    echo "Metadata: ${GRAPH_METADATA} -> ${PROCESSED_DIR}/graph-metadata.json"
+else
+    echo "Metadata: none (GANDALF_GRAPH_METADATA is not set)"
+fi
 if [[ -n "${SERVICE}" ]]; then
     echo "Restart:  ${SERVICE}"
 else
@@ -241,6 +257,13 @@ TMPDIR="${TMP_DIR}" "${BUILD_BIN}" \
     --nodes-collection "${GANDALF_NODES_COLLECTION}" \
     --edges-collection "${GANDALF_EDGES_COLLECTION}" \
     --output "${PROCESSED_DIR}/"
+
+# Gandalf loads graph-metadata.json from the graph folder and serves it at /metadata
+if [[ -n "${GRAPH_METADATA}" ]]; then
+    echo "      Adding graph-metadata.json to ${PROCESSED_DIR}"
+    cp "${GRAPH_METADATA}" "${PROCESSED_DIR}/graph-metadata.json"
+    chmod 644 "${PROCESSED_DIR}/graph-metadata.json"
+fi
 
 # -----------------------------------------------------------------------------
 # Step 2 - Compact the graph into a tarball
