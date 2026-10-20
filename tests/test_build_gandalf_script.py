@@ -26,7 +26,7 @@ BASH = "/bin/bash" if os.path.exists("/bin/bash") else shutil.which("bash")
 # what the script and the stubs themselves need, and nothing else
 BASIC_TOOLS = (
     "bash", "env", "tar", "gzip", "gunzip", "ln", "mkdir", "date", "basename", "dirname", "sed", "cat", "rm", "id",
-    "cp", "chmod",
+    "cp", "chmod", "git",
 )
 
 STUBS = {
@@ -63,14 +63,25 @@ fi
 """,
 }
 DATE = "10_09_2026"
+RELEASE = "2026_06_21"
+VERSION = "v1.1.0"
+ARCHIVE_NAME = f"gandalf_translatorkg_06_21_2026_{VERSION}.tar.gz"
 
 
+@unittest.skipUnless(shutil.which("git"), "the script finds the Gandalf version with git")
 class BuildGandalfScriptTest(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="build-gandalf-test-"))
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        self.stubs = self.tmp / "stubs"
-        self.stubs.mkdir()
+        # a Gandalf checkout at the lightweight tag v1.1.0 (like the real one), with the stubs where its
+        # virtualenv keeps its commands, which is where the script looks for the version
+        self.checkout = self.tmp / "gandalf-checkout"
+        self.checkout.mkdir()
+        self.git("init", "-q")
+        self.git("commit", "-q", "--allow-empty", "-m", "release")
+        self.git("tag", VERSION)
+        self.stubs = self.checkout / ".venv" / "bin"
+        self.stubs.mkdir(parents=True)
         self.toolbox = self.tmp / "toolbox"
         self.toolbox.mkdir()
         for tool in BASIC_TOOLS:
@@ -83,6 +94,20 @@ class BuildGandalfScriptTest(unittest.TestCase):
         self.log = self.tmp / "stub.log"
         for name, body in STUBS.items():
             self.add_stub(name, body)
+
+    def git(self, *args):
+        """Run git in the fake Gandalf checkout, ignoring whatever git config the machine has."""
+        settings = ["user.name=test", "user.email=test@example.org", "commit.gpgsign=false", "tag.gpgsign=false"]
+        command = ["git", "-C", str(self.checkout)]
+        for setting in settings:
+            command += ["-c", setting]
+        env = {
+            "PATH": os.environ["PATH"],
+            "HOME": str(self.tmp),
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+        }
+        subprocess.run([*command, *args], check=True, capture_output=True, env=env)
 
     def add_stub(self, name, body):
         path = self.stubs / name
@@ -101,6 +126,7 @@ class BuildGandalfScriptTest(unittest.TestCase):
             "STUB_LOG": str(self.log),
             "GANDALF_ROOT": str(self.root),
             "GANDALF_BUILD_DATE": DATE,
+            "GANDALF_RELEASE": RELEASE,
             "GANDALF_MONGO_URI": "mongodb://db.example:27017",
             "GANDALF_MONGO_DB": "dogpark_src",
             "GANDALF_NODES_COLLECTION": "tier0_kg_nodes",
@@ -125,7 +151,8 @@ class BuildGandalfScriptTest(unittest.TestCase):
 
     @property
     def archive(self):
-        return self.root / "compacted" / f"gandalf_translatorkg_{DATE}.tar.gz"
+        """The archive of a run without a build name: the release date and the Gandalf version."""
+        return self.root / "compacted" / ARCHIVE_NAME
 
 
 class FullRunTest(BuildGandalfScriptTest):
@@ -179,7 +206,7 @@ class FullRunTest(BuildGandalfScriptTest):
         )
 
         self.assertIn(
-            f"aws s3 cp {self.archive} s3://my-bucket/gandalf/gandalf_translatorkg_{DATE}.tar.gz "
+            f"aws s3 cp {self.archive} s3://my-bucket/gandalf/{ARCHIVE_NAME} "
             "--no-progress --region us-west-2 --profile gandalf-profile",
             self.calls(),
         )
@@ -189,8 +216,8 @@ class FullRunTest(BuildGandalfScriptTest):
         self.run_script(GANDALF_S3_BUCKET="my-bucket")
 
         uploads = [call for call in self.calls() if call.startswith("aws s3 cp")]
-        self.assertIn(f"s3://my-bucket/gandalf/gandalf_translatorkg_{DATE}.tar.gz", uploads[0])
-        self.assertIn(f"s3://my-bucket/gandalf_translatorkg_{DATE}.tar.gz", uploads[1])
+        self.assertIn(f"s3://my-bucket/gandalf/{ARCHIVE_NAME}", uploads[0])
+        self.assertIn(f"s3://my-bucket/{ARCHIVE_NAME}", uploads[1])
         self.assertNotIn("--region", uploads[1])
         self.assertNotIn("--profile", uploads[1])
 
@@ -240,8 +267,8 @@ class OptionalStepsTest(BuildGandalfScriptTest):
         self.assertIn("sudo -n systemctl restart gandalf-test.service", self.calls())
 
     def test_gandalf_build_mongo_can_be_given_as_a_full_path(self):
-        elsewhere = self.tmp / "venv-bin"
-        elsewhere.mkdir()
+        elsewhere = self.checkout / "other-venv" / "bin"  # still inside the checkout, where the version is read
+        elsewhere.mkdir(parents=True)
         (elsewhere / "gandalf-build-mongo").write_text((self.stubs / "gandalf-build-mongo").read_text())
         (elsewhere / "gandalf-build-mongo").chmod(0o755)
         self.remove_stub("gandalf-build-mongo")  # no longer on PATH
@@ -253,11 +280,12 @@ class OptionalStepsTest(BuildGandalfScriptTest):
 
 
 class BuildNameTest(BuildGandalfScriptTest):
-    """The hub's build name, when given, replaces the date stamp in the folder and archive names."""
+    """The hub's build name names the graph folder, and its id, the part after the last _, ends the archive name."""
 
     NAME = "tier0_kg_gandalf_20261012_wffqr2d5"
+    ARCHIVE = f"gandalf_translatorkg_06_21_2026_{VERSION}_wffqr2d5.tar.gz"
 
-    def test_the_build_name_names_the_graph_folder_the_archive_and_the_s3_key(self):
+    def test_the_build_name_names_the_graph_folder_and_its_id_ends_the_archive_and_the_s3_key(self):
         result = self.run_script(
             GANDALF_BUILD_NAME=self.NAME, GANDALF_S3_BUCKET="my-bucket", GANDALF_S3_PREFIX="gandalf"
         )
@@ -265,13 +293,13 @@ class BuildNameTest(BuildGandalfScriptTest):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         graph = self.root / "processed" / self.NAME / "graph_mmap"
         self.assertEqual((graph / "graph.bin").read_text().strip(), "graph")
-        archive = self.root / "compacted" / f"{self.NAME}.tar.gz"
+        archive = self.root / "compacted" / self.ARCHIVE
         with tarfile.open(archive) as tar:
             # whoever unpacks it still finds a graph_mmap/ folder, as before
             self.assertIn("graph_mmap/graph.bin", tar.getnames())
         self.assertEqual((self.root / "processed" / "latest").resolve(), graph.resolve())
-        self.assertIn(f"aws s3 cp {archive} s3://my-bucket/gandalf/{self.NAME}.tar.gz --no-progress", self.calls())
-        # nothing is named after the date any more
+        self.assertIn(f"aws s3 cp {archive} s3://my-bucket/gandalf/{self.ARCHIVE} --no-progress", self.calls())
+        # the build date names neither the folder nor the archive
         self.assertFalse((self.root / "processed" / DATE).exists())
         self.assertFalse(self.archive.exists())
 
@@ -283,10 +311,25 @@ class BuildNameTest(BuildGandalfScriptTest):
         self.assertEqual([result.returncode for result in results], [0, 0], results[-1].stdout + results[-1].stderr)
         for name in names:
             self.assertTrue((self.root / "processed" / name / "graph_mmap" / "graph.bin").is_file(), name)
-            self.assertTrue((self.root / "compacted" / f"{name}.tar.gz").is_file(), name)
+            archive = f"gandalf_translatorkg_06_21_2026_{VERSION}_{name.rsplit('_', 1)[1]}.tar.gz"
+            self.assertTrue((self.root / "compacted" / archive).is_file(), archive)
         # latest follows the build that ran last
         latest = self.root / "processed" / "latest"
         self.assertEqual(latest.resolve(), (self.root / "processed" / names[1] / "graph_mmap").resolve())
+
+    def test_a_build_name_without_an_underscore_is_its_own_id(self):
+        result = self.run_script(GANDALF_BUILD_NAME="nightly")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        archive = self.root / "compacted" / f"gandalf_translatorkg_06_21_2026_{VERSION}_nightly.tar.gz"
+        self.assertTrue(archive.is_file())
+
+    def test_a_build_name_ending_in_an_underscore_still_gets_an_id(self):
+        result = self.run_script(GANDALF_BUILD_NAME="nightly_")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        archive = self.root / "compacted" / f"gandalf_translatorkg_06_21_2026_{VERSION}_nightly_.tar.gz"
+        self.assertTrue(archive.is_file())
 
     def test_without_a_build_name_the_date_based_names_stay(self):
         for unset in (None, ""):
@@ -306,7 +349,59 @@ class BuildNameTest(BuildGandalfScriptTest):
 
         self.assertIn(f"Gandalf build {self.NAME}: dogpark_src.", result.stdout)
         self.assertIn(f"Output:   {self.root}/processed/{self.NAME}/graph_mmap", result.stdout)
-        self.assertIn(f"Archive:  {self.root}/compacted/{self.NAME}.tar.gz", result.stdout)
+        self.assertIn(f"Archive:  {self.root}/compacted/{self.ARCHIVE}", result.stdout)
+
+
+class ArchiveNameTest(BuildGandalfScriptTest):
+    """The archive is dated with the KGX release and carries the Gandalf version, the git tag of its checkout."""
+
+    def run_and_find_archive(self, **overrides):
+        result = self.run_script(**overrides)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result, sorted(path.name for path in (self.root / "compacted").iterdir())
+
+    def test_the_release_dates_it_and_the_tag_is_the_version(self):
+        result, archives = self.run_and_find_archive()
+
+        self.assertEqual(archives, ["gandalf_translatorkg_06_21_2026_v1.1.0.tar.gz"])
+        self.assertIn("Upstream KGX release: 2026_06_21", result.stdout)
+        self.assertIn("Gandalf version: v1.1.0", result.stdout)
+
+    def test_the_build_date_does_not_date_the_archive(self):
+        _, archives = self.run_and_find_archive(GANDALF_BUILD_DATE="01_02_2027")
+
+        self.assertEqual(archives, [ARCHIVE_NAME])
+
+    def test_a_release_written_with_dashes_gives_the_same_name(self):
+        _, archives = self.run_and_find_archive(GANDALF_RELEASE="2026-06-21")
+
+        self.assertEqual(archives, [ARCHIVE_NAME])
+
+    def test_an_annotated_tag_works_like_the_lightweight_one(self):
+        self.git("tag", "-d", VERSION)
+        self.git("tag", "-a", VERSION, "-m", "release")
+
+        _, archives = self.run_and_find_archive()
+
+        self.assertEqual(archives, [ARCHIVE_NAME])
+
+    def test_a_checkout_ahead_of_the_tag_says_how_far(self):
+        self.git("commit", "-q", "--allow-empty", "-m", "after the release")
+
+        _, archives = self.run_and_find_archive()
+
+        self.assertRegex(archives[0], rf"^gandalf_translatorkg_06_21_2026_{VERSION}-1-g[0-9a-f]+\.tar\.gz$")
+
+    def test_local_changes_to_the_checkout_show_as_dirty(self):
+        (self.checkout / "gandalf.py").write_text("print('released')\n")
+        self.git("add", "gandalf.py")
+        self.git("commit", "-q", "-m", "code")
+        self.git("tag", "-f", VERSION)
+        (self.checkout / "gandalf.py").write_text("print('edited on the server')\n")
+
+        _, archives = self.run_and_find_archive()
+
+        self.assertEqual(archives, [f"gandalf_translatorkg_06_21_2026_{VERSION}-dirty.tar.gz"])
 
 
 class GraphMetadataTest(BuildGandalfScriptTest):
@@ -451,6 +546,16 @@ class ConfigurationCheckTest(BuildGandalfScriptTest):
                 "not a readable, non-empty file",
             ),
             "graph metadata file that is not JSON": ({"GANDALF_GRAPH_METADATA": str(broken)}, "is not valid JSON"),
+            "release that is not set": ({"GANDALF_RELEASE": None}, "GANDALF_RELEASE is not set"),
+            "release that is not a date": ({"GANDALF_RELEASE": "latest"}, "is not a date like 2026_06_21"),
+            "release with a month that does not exist": (
+                {"GANDALF_RELEASE": "2026_13_01"},
+                "is not a date like 2026_06_21",
+            ),
+            "release with a day that does not exist": (
+                {"GANDALF_RELEASE": "2026_06_32"},
+                "is not a date like 2026_06_21",
+            ),
         }
         for name, (overrides, expected) in cases.items():
             with self.subTest(case=name):
@@ -491,6 +596,44 @@ class ConfigurationCheckTest(BuildGandalfScriptTest):
         result = self.run_script(GANDALF_GRAPH_METADATA=str(locked))
 
         self.assert_refused(result, "not a readable, non-empty file")
+
+    def assert_refused_for_the_version(self, result, *needles):
+        self.assert_refused(result, *needles)
+        listed = [line for line in result.stderr.splitlines() if line.startswith("  - ")]
+        self.assertEqual(len(listed), 1, result.stderr)
+
+    def test_a_host_without_git_is_refused_because_the_archive_needs_the_version(self):
+        (self.toolbox / "git").unlink()
+
+        result = self.run_script()
+
+        self.assert_refused_for_the_version(result, "required command not found: git")
+
+    def test_gandalf_outside_a_git_checkout_is_refused(self):
+        outside = self.tmp / "outside" / "bin"
+        outside.mkdir(parents=True)
+        shutil.copy(self.stubs / "gandalf-build-mongo", outside / "gandalf-build-mongo")
+
+        result = self.run_script(GANDALF_BUILD_MONGO_BIN=str(outside / "gandalf-build-mongo"))
+
+        self.assert_refused_for_the_version(
+            result, "can't tell which Gandalf version", "git describe --tags", "inside a Gandalf git checkout"
+        )
+
+    def test_a_checkout_without_tags_is_refused(self):
+        self.git("tag", "-d", VERSION)
+
+        result = self.run_script()
+
+        self.assert_refused_for_the_version(result, "can't tell which Gandalf version", "with its tags fetched")
+
+    def test_a_tag_that_cannot_be_part_of_a_file_name_is_refused(self):
+        self.git("tag", "-d", VERSION)
+        self.git("tag", "release/1.1")
+
+        result = self.run_script()
+
+        self.assert_refused_for_the_version(result, "Gandalf version 'release/1.1'", "can't be part of a file name")
 
     def test_a_systemd_unit_that_does_not_exist_is_caught_before_the_build(self):
         result = self.run_script(STUB_NO_UNIT="1")
@@ -551,7 +694,7 @@ class ConfigurationCheckTest(BuildGandalfScriptTest):
         self.assertIn(f"Output:   {self.root}/processed/{DATE}/graph_mmap", out)
         self.assertIn("Restart:  gandalf.service", out)
         self.assertIn(
-            f"Upload:   s3://my-bucket/gandalf/gandalf_translatorkg_{DATE}.tar.gz (as arn:aws:iam::123456789012:user/dogpark)",
+            f"Upload:   s3://my-bucket/gandalf/{ARCHIVE_NAME} (as arn:aws:iam::123456789012:user/dogpark)",
             out,
         )
         self.assertLess(out.index("Upload:"), out.index("[1/5]"))

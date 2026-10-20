@@ -13,6 +13,11 @@ temporary file and passes the path to the script, which copies it next to the gr
 build fails before it starts when no document is stored, or when the stored one belongs to
 a different release than the data that was uploaded.
 
+The archive is ``gandalf_translatorkg_<KGX release as MM_DD_YYYY>_<Gandalf version>_<build id>.tar.gz``.
+The version is ``git describe --tags --dirty`` of the Gandalf checkout that holds
+``gandalf-build-mongo``, so ``gandalf_bin`` has to point into that checkout's virtualenv. The
+script refuses to start when it can't find the release or the version.
+
 Setup
 -----
 1. Create a build config for this class, once, from the hub console::
@@ -144,8 +149,9 @@ def script_env(settings, edge_backend, node_backend, release=None, build_name=No
     """The ``GANDALF_*`` variables ``build_gandalf.sh`` reads (listed in its header).
 
     ``build_name`` is the hub's name for the build, for example ``tier0_kg_gandalf_20261012_wffqr2d5``.
-    The script names the graph folder and the archive after it. ``graph_metadata`` is the path of the
-    ``graph-metadata.json`` the script copies into the graph folder.
+    The script names the graph folder after it and ends the archive name with its id. ``release`` dates
+    the archive. ``graph_metadata`` is the path of the ``graph-metadata.json`` the script copies into the
+    graph folder.
     """
     if (edge_backend.args, edge_backend.dbs) != (node_backend.args, node_backend.dbs):
         raise GandalfBuildError(

@@ -106,7 +106,8 @@ RELEASE_CONFIG = {}
 # bin/build_gandalf.sh. Real values (paths, bucket) belong in the environment-specific,
 # gitignored config.py, not here.
 #   "s3"           {"bucket", "prefix", "region", "profile"}, the bucket is required;
-#   "gandalf_bin"  gandalf-build-mongo, full path inside Gandalf's .venv  (default: found on PATH)
+#   "gandalf_bin"  gandalf-build-mongo, full path inside Gandalf's .venv; the git tag of that
+#                  checkout is the version in the archive name           (default: found on PATH)
 #   "root"         directory holding processed/, compacted/ and tmp/   (default /data/dogpark/gandalf)
 #   "service"      systemd unit to restart; None or "" skips the restart  (default "gandalf.service")
 #   "timeout"      seconds before the script is killed                    (default 6 hours)

@@ -16,6 +16,7 @@
 #   GANDALF_NODES_COLLECTION   e.g. tier0_kg_nodes
 #   GANDALF_EDGES_COLLECTION   e.g. tier0_kg_edges
 #   GANDALF_S3_BUCKET          bucket for the archive, the name only (no s3://)
+#   GANDALF_RELEASE            upstream KGX release the graph is built from, e.g. 2026_06_21; it dates the archive
 #
 # Optional:
 #   GANDALF_ROOT               /data/dogpark/gandalf   processed/, compacted/ and tmp/ live under it
@@ -24,13 +25,15 @@
 #   GANDALF_S3_PREFIX          key prefix inside the bucket
 #   GANDALF_S3_REGION          passed to `aws --region`
 #   GANDALF_S3_PROFILE         passed to `aws --profile`
-#   GANDALF_RELEASE            upstream KGX release the graph is built from
 #   GANDALF_GRAPH_METADATA     path of a graph-metadata.json to copy into the graph folder, so the archive has it
 #   GANDALF_BUILD_NAME         name of the build, e.g. tier0_kg_gandalf_20261012_wffqr2d5. When set it names the
-#                              graph folder processed/<name>/ and the archive compacted/<name>.tar.gz
-#   GANDALF_BUILD_DATE         MM_DD_YYYY stamp for those date-based names, processed/<stamp>/ and
-#                              gandalf_translatorkg_<stamp>.tar.gz (default: today)
+#                              graph folder processed/<name>/, and the part after its last _ ends the archive name
+#   GANDALF_BUILD_DATE         MM_DD_YYYY stamp for the graph folder when there is no build name (default: today)
 #   GANDALF_SKIP_AWS_CHECK     1 = don't ask AWS who we are up front (for a host that reaches S3 but not STS)
+#
+# The archive is compacted/gandalf_translatorkg_<release as MM_DD_YYYY>_<Gandalf version>[_<build id>].tar.gz, for
+# example gandalf_translatorkg_06_21_2026_v1.1.0_wffqr2d5.tar.gz. The version is `git describe --tags --dirty` run
+# next to gandalf-build-mongo, so that command has to be inside a Gandalf git checkout, at a tag.
 #
 # =============================================================================
 
@@ -49,21 +52,24 @@ SERVICE="${GANDALF_SERVICE-gandalf.service}"
 S3_BUCKET="${GANDALF_S3_BUCKET-}"
 S3_PREFIX="${GANDALF_S3_PREFIX-}"
 GRAPH_METADATA="${GANDALF_GRAPH_METADATA-}"
+RELEASE="${GANDALF_RELEASE-}"
 
 BUILD_NAME="${GANDALF_BUILD_NAME-}"
+BUILD_ID=""
 ARCHIVE_DIR="${ROOT}/compacted"
 if [[ -n "${BUILD_NAME}" ]]; then
     # the hub's build name is unique, so no build ever writes into another one's folder
     BUILD_DIR="${ROOT}/processed/${BUILD_NAME}"
-    ARCHIVE="${ARCHIVE_DIR}/${BUILD_NAME}.tar.gz"
+    # its last part, the random id the hub adds, ends the archive name
+    BUILD_ID="${BUILD_NAME##*_}"
+    BUILD_ID="${BUILD_ID:-${BUILD_NAME}}"
 else
     BUILD_DIR="${ROOT}/processed/${DATE}"
-    ARCHIVE="${ARCHIVE_DIR}/gandalf_translatorkg_${DATE}.tar.gz"
 fi
 PROCESSED_DIR="${BUILD_DIR}/graph_mmap"
 SYMLINK="${ROOT}/processed/latest"
 TMP_DIR="${ROOT}/tmp"
-S3_URI="s3://${S3_BUCKET}/${S3_PREFIX:+${S3_PREFIX%/}/}$(basename "${ARCHIVE}")"
+# ARCHIVE and S3_URI are set once the preflight has found the release and the Gandalf version
 
 # the same options for every aws call, so the credentials check and the upload
 # talk as the same account
@@ -129,7 +135,18 @@ fi
 
 date_re='^[0-9]{2}_[0-9]{2}_[0-9]{4}$'
 if [[ ! "${DATE}" =~ ${date_re} ]]; then
-    problem "GANDALF_BUILD_DATE must look like MM_DD_YYYY, for example 10_09_2026, because it names folders and the archive. Got '${DATE}'"
+    problem "GANDALF_BUILD_DATE must look like MM_DD_YYYY, for example 10_09_2026, because it names the graph folder. Got '${DATE}'"
+fi
+
+# the archive is dated with the KGX release, as MM_DD_YYYY
+release_re='^([0-9]{4})[_-](0[1-9]|1[0-2])[_-](0[1-9]|[12][0-9]|3[01])$'
+RELEASE_STAMP=""
+if [[ -z "${RELEASE}" ]]; then
+    problem "GANDALF_RELEASE is not set: the archive is dated with the KGX release, for example 2026_06_21 (the hub passes the release KgDumper recorded in src_dump)"
+elif [[ "${RELEASE}" =~ ${release_re} ]]; then
+    RELEASE_STAMP="${BASH_REMATCH[2]}_${BASH_REMATCH[3]}_${BASH_REMATCH[1]}"
+else
+    problem "GANDALF_RELEASE '${RELEASE}' is not a date like 2026_06_21, so the archive can't be dated with it"
 fi
 
 # the build name becomes a folder name and a file name, so it must not be able to point anywhere else
@@ -179,6 +196,24 @@ fi
 if ! have "${BUILD_BIN}"; then
     problem "required command not found: ${BUILD_BIN} (set GANDALF_BUILD_MONGO_BIN to its full path inside Gandalf's virtualenv, e.g. /opt/home/dogpark/gandalf/.venv/bin/gandalf-build-mongo)"
 fi
+# the archive carries the Gandalf version: the git tag of the checkout gandalf-build-mongo is in
+VERSION=""
+if ! have git; then
+    problem "required command not found: git (the archive name carries the Gandalf version, the git tag of its checkout)"
+elif have "${BUILD_BIN}"; then
+    gandalf_dir="$(dirname "$(command -v "${BUILD_BIN}")")"
+    if VERSION="$(git -C "${gandalf_dir}" describe --tags --dirty 2> /dev/null)"; then
+        version_re='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+        if [[ ! "${VERSION}" =~ ${version_re} || "${#VERSION}" -gt 100 ]]; then
+            problem "Gandalf version '${VERSION}' (git describe --tags in ${gandalf_dir}) can't be part of a file name: letters, digits, . _ and - only, starting with a letter or digit"
+            VERSION=""
+        fi
+    else
+        describe_error="$(git -C "${gandalf_dir}" describe --tags --dirty 2>&1 || true)"
+        problem "can't tell which Gandalf version ${BUILD_BIN} is, and the archive name carries it: git describe --tags in ${gandalf_dir} says: ${describe_error%%$'\n'*}. ${BUILD_BIN} must be inside a Gandalf git checkout, at a tag, with its tags fetched (for example /opt/home/dogpark/gandalf/.venv/bin/gandalf-build-mongo)"
+        VERSION=""
+    fi
+fi
 if ! have tar; then
     problem "required command not found: tar"
 fi
@@ -196,6 +231,9 @@ fi
 
 # only talk to systemd and AWS once everything above is in order
 stop_if_problems
+
+ARCHIVE="${ARCHIVE_DIR}/gandalf_translatorkg_${RELEASE_STAMP}_${VERSION}${BUILD_ID:+_${BUILD_ID}}.tar.gz"
+S3_URI="s3://${S3_BUCKET}/${S3_PREFIX:+${S3_PREFIX%/}/}$(basename "${ARCHIVE}")"
 
 # --- systemd and AWS: can this user really do what the last two steps need? ---
 if [[ -n "${SERVICE}" ]]; then
@@ -224,9 +262,8 @@ stop_if_problems
 SAFE_URI="$(printf '%s' "${GANDALF_MONGO_URI}" | sed -E 's#//[^/@]*@#//***@#')"
 
 echo "Gandalf build ${BUILD_NAME:-${DATE}}: ${GANDALF_MONGO_DB}.${GANDALF_NODES_COLLECTION} + ${GANDALF_EDGES_COLLECTION} @ ${SAFE_URI}"
-if [[ -n "${GANDALF_RELEASE:-}" ]]; then
-    echo "Upstream KGX release: ${GANDALF_RELEASE}"
-fi
+echo "Upstream KGX release: ${RELEASE}"
+echo "Gandalf version: ${VERSION}"
 echo "Output:   ${PROCESSED_DIR}"
 echo "Archive:  ${ARCHIVE}"
 if [[ -n "${GRAPH_METADATA}" ]]; then
