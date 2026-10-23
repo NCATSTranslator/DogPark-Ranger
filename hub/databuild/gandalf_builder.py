@@ -13,10 +13,12 @@ temporary file and passes the path to the script, which copies it next to the gr
 build fails before it starts when no document is stored, or when the stored one belongs to
 a different release than the data that was uploaded.
 
-The archive is ``gandalf_translatorkg_<KGX release as MM_DD_YYYY>_<Gandalf version>_<build id>.tar.gz``.
-The version is ``git describe --tags --dirty`` of the Gandalf checkout that holds
-``gandalf-build-mongo``, so ``gandalf_bin`` has to point into that checkout's virtualenv. The
-script refuses to start when it can't find the release or the version.
+The archive is ``gandalf_<Gandalf version>_translatorkg_<KGX release>_<build id>.tar.gz``, for example
+``gandalf_v1.1.0_translatorkg_v1.0.2_wffqr2d5.tar.gz``. Both versions are written with a v in front, unless
+they already start like one, and the KGX release is used as it is. The Gandalf version is
+``git describe --tags --dirty`` of the Gandalf checkout that holds ``gandalf-build-mongo``, so
+``gandalf_bin`` has to point into that checkout's virtualenv. The script refuses to start when it can't
+find the release or the version.
 
 Setup
 -----

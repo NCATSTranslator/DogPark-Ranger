@@ -65,7 +65,7 @@ fi
 DATE = "10_09_2026"
 RELEASE = "2026_06_21"
 VERSION = "v1.1.0"
-ARCHIVE_NAME = f"gandalf_translatorkg_06_21_2026_{VERSION}.tar.gz"
+ARCHIVE_NAME = f"gandalf_{VERSION}_translatorkg_v{RELEASE}.tar.gz"
 
 
 @unittest.skipUnless(shutil.which("git"), "the script finds the Gandalf version with git")
@@ -151,7 +151,7 @@ class BuildGandalfScriptTest(unittest.TestCase):
 
     @property
     def archive(self):
-        """The archive of a run without a build name: the release date and the Gandalf version."""
+        """The archive of a run without a build name: the Gandalf version and the KGX release."""
         return self.root / "compacted" / ARCHIVE_NAME
 
 
@@ -283,7 +283,7 @@ class BuildNameTest(BuildGandalfScriptTest):
     """The hub's build name names the graph folder, and its id, the part after the last _, ends the archive name."""
 
     NAME = "tier0_kg_gandalf_20261012_wffqr2d5"
-    ARCHIVE = f"gandalf_translatorkg_06_21_2026_{VERSION}_wffqr2d5.tar.gz"
+    ARCHIVE = f"gandalf_{VERSION}_translatorkg_v{RELEASE}_wffqr2d5.tar.gz"
 
     def test_the_build_name_names_the_graph_folder_and_its_id_ends_the_archive_and_the_s3_key(self):
         result = self.run_script(
@@ -311,7 +311,7 @@ class BuildNameTest(BuildGandalfScriptTest):
         self.assertEqual([result.returncode for result in results], [0, 0], results[-1].stdout + results[-1].stderr)
         for name in names:
             self.assertTrue((self.root / "processed" / name / "graph_mmap" / "graph.bin").is_file(), name)
-            archive = f"gandalf_translatorkg_06_21_2026_{VERSION}_{name.rsplit('_', 1)[1]}.tar.gz"
+            archive = f"gandalf_{VERSION}_translatorkg_v{RELEASE}_{name.rsplit('_', 1)[1]}.tar.gz"
             self.assertTrue((self.root / "compacted" / archive).is_file(), archive)
         # latest follows the build that ran last
         latest = self.root / "processed" / "latest"
@@ -321,14 +321,14 @@ class BuildNameTest(BuildGandalfScriptTest):
         result = self.run_script(GANDALF_BUILD_NAME="nightly")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        archive = self.root / "compacted" / f"gandalf_translatorkg_06_21_2026_{VERSION}_nightly.tar.gz"
+        archive = self.root / "compacted" / f"gandalf_{VERSION}_translatorkg_v{RELEASE}_nightly.tar.gz"
         self.assertTrue(archive.is_file())
 
     def test_a_build_name_ending_in_an_underscore_still_gets_an_id(self):
         result = self.run_script(GANDALF_BUILD_NAME="nightly_")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        archive = self.root / "compacted" / f"gandalf_translatorkg_06_21_2026_{VERSION}_nightly_.tar.gz"
+        archive = self.root / "compacted" / f"gandalf_{VERSION}_translatorkg_v{RELEASE}_nightly_.tar.gz"
         self.assertTrue(archive.is_file())
 
     def test_without_a_build_name_the_date_based_names_stay(self):
@@ -353,29 +353,75 @@ class BuildNameTest(BuildGandalfScriptTest):
 
 
 class ArchiveNameTest(BuildGandalfScriptTest):
-    """The archive is dated with the KGX release and carries the Gandalf version, the git tag of its checkout."""
+    """The archive carries the Gandalf version, the git tag of its checkout, and the KGX release, each with a v."""
 
     def run_and_find_archive(self, **overrides):
         result = self.run_script(**overrides)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result, sorted(path.name for path in (self.root / "compacted").iterdir())
 
-    def test_the_release_dates_it_and_the_tag_is_the_version(self):
+    def test_the_tag_is_the_gandalf_version_and_the_release_is_the_kgx_version(self):
         result, archives = self.run_and_find_archive()
 
-        self.assertEqual(archives, ["gandalf_translatorkg_06_21_2026_v1.1.0.tar.gz"])
+        self.assertEqual(archives, ["gandalf_v1.1.0_translatorkg_v2026_06_21.tar.gz"])
         self.assertIn("Upstream KGX release: 2026_06_21", result.stdout)
         self.assertIn("Gandalf version: v1.1.0", result.stdout)
 
-    def test_the_build_date_does_not_date_the_archive(self):
+    def test_the_build_date_does_not_name_the_archive(self):
         _, archives = self.run_and_find_archive(GANDALF_BUILD_DATE="01_02_2027")
 
         self.assertEqual(archives, [ARCHIVE_NAME])
 
-    def test_a_release_written_with_dashes_gives_the_same_name(self):
+    def test_a_release_that_is_a_date_is_not_turned_into_another_format(self):
         _, archives = self.run_and_find_archive(GANDALF_RELEASE="2026-06-21")
 
+        self.assertEqual(archives, ["gandalf_v1.1.0_translatorkg_v2026-06-21.tar.gz"])
+
+    def test_a_numbered_release_is_the_kgx_version(self):
+        result, archives = self.run_and_find_archive(GANDALF_RELEASE="1.0.2")
+
+        self.assertEqual(archives, ["gandalf_v1.1.0_translatorkg_v1.0.2.tar.gz"])
+        self.assertIn("Upstream KGX release: 1.0.2", result.stdout)
+
+    def test_the_build_id_ends_the_name(self):
+        _, archives = self.run_and_find_archive(
+            GANDALF_RELEASE="1.0.2", GANDALF_BUILD_NAME="tier0_kg_gandalf_20261021_5nxkbtdf"
+        )
+
+        self.assertEqual(archives, ["gandalf_v1.1.0_translatorkg_v1.0.2_5nxkbtdf.tar.gz"])
+
+    def test_a_release_that_already_starts_like_a_version_does_not_get_a_second_v(self):
+        for release in ("v1.0.2", "V1.0.2", "v1.0.2-rc.1"):
+            with self.subTest(release=release):
+                shutil.rmtree(self.root, ignore_errors=True)
+
+                _, archives = self.run_and_find_archive(GANDALF_RELEASE=release)
+
+                self.assertEqual(archives, [f"gandalf_v1.1.0_translatorkg_{release}.tar.gz"])
+
+    def test_a_release_that_only_starts_with_the_letter_v_still_gets_one(self):
+        _, archives = self.run_and_find_archive(GANDALF_RELEASE="vnext")
+
+        self.assertEqual(archives, ["gandalf_v1.1.0_translatorkg_vvnext.tar.gz"])
+
+    def test_a_release_of_digits_only_gets_a_v(self):
+        _, archives = self.run_and_find_archive(GANDALF_RELEASE="20260621")
+
+        self.assertEqual(archives, ["gandalf_v1.1.0_translatorkg_v20260621.tar.gz"])
+
+    def test_a_release_of_the_longest_allowed_length_is_accepted(self):
+        _, archives = self.run_and_find_archive(GANDALF_RELEASE="1" * 100)
+
+        self.assertEqual(archives, [f"gandalf_v1.1.0_translatorkg_v{'1' * 100}.tar.gz"])
+
+    def test_a_gandalf_tag_without_a_v_gets_one(self):
+        self.git("tag", "-d", VERSION)
+        self.git("tag", "1.1.0")
+
+        result, archives = self.run_and_find_archive()
+
         self.assertEqual(archives, [ARCHIVE_NAME])
+        self.assertIn("Gandalf version: 1.1.0", result.stdout)
 
     def test_an_annotated_tag_works_like_the_lightweight_one(self):
         self.git("tag", "-d", VERSION)
@@ -390,7 +436,7 @@ class ArchiveNameTest(BuildGandalfScriptTest):
 
         _, archives = self.run_and_find_archive()
 
-        self.assertRegex(archives[0], rf"^gandalf_translatorkg_06_21_2026_{VERSION}-1-g[0-9a-f]+\.tar\.gz$")
+        self.assertRegex(archives[0], rf"^gandalf_{VERSION}-1-g[0-9a-f]+_translatorkg_v2026_06_21\.tar\.gz$")
 
     def test_local_changes_to_the_checkout_show_as_dirty(self):
         (self.checkout / "gandalf.py").write_text("print('released')\n")
@@ -401,7 +447,7 @@ class ArchiveNameTest(BuildGandalfScriptTest):
 
         _, archives = self.run_and_find_archive()
 
-        self.assertEqual(archives, [f"gandalf_translatorkg_06_21_2026_{VERSION}-dirty.tar.gz"])
+        self.assertEqual(archives, [f"gandalf_{VERSION}-dirty_translatorkg_v2026_06_21.tar.gz"])
 
 
 class GraphMetadataTest(BuildGandalfScriptTest):
@@ -547,15 +593,11 @@ class ConfigurationCheckTest(BuildGandalfScriptTest):
             ),
             "graph metadata file that is not JSON": ({"GANDALF_GRAPH_METADATA": str(broken)}, "is not valid JSON"),
             "release that is not set": ({"GANDALF_RELEASE": None}, "GANDALF_RELEASE is not set"),
-            "release that is not a date": ({"GANDALF_RELEASE": "latest"}, "is not a date like 2026_06_21"),
-            "release with a month that does not exist": (
-                {"GANDALF_RELEASE": "2026_13_01"},
-                "is not a date like 2026_06_21",
-            ),
-            "release with a day that does not exist": (
-                {"GANDALF_RELEASE": "2026_06_32"},
-                "is not a date like 2026_06_21",
-            ),
+            "release with a space": ({"GANDALF_RELEASE": "1.0 2"}, "can't be part of a file name"),
+            "release that climbs out of its folder": ({"GANDALF_RELEASE": "../1.0.2"}, "can't be part of a file name"),
+            "release with a slash": ({"GANDALF_RELEASE": "1.0/2"}, "can't be part of a file name"),
+            "release starting with a dash": ({"GANDALF_RELEASE": "-1.0.2"}, "can't be part of a file name"),
+            "release that is too long": ({"GANDALF_RELEASE": "1" * 101}, "can't be part of a file name"),
         }
         for name, (overrides, expected) in cases.items():
             with self.subTest(case=name):

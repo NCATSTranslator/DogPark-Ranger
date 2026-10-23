@@ -16,7 +16,7 @@
 #   GANDALF_NODES_COLLECTION   e.g. tier0_kg_nodes
 #   GANDALF_EDGES_COLLECTION   e.g. tier0_kg_edges
 #   GANDALF_S3_BUCKET          bucket for the archive, the name only (no s3://)
-#   GANDALF_RELEASE            upstream KGX release the graph is built from, e.g. 2026_06_21; it dates the archive
+#   GANDALF_RELEASE            upstream KGX release the graph is built from, e.g. 1.0.2 or 2026_06_21; it is part of the archive name
 #
 # Optional:
 #   GANDALF_ROOT               /data/dogpark/gandalf   processed/, compacted/ and tmp/ live under it
@@ -31,9 +31,10 @@
 #   GANDALF_BUILD_DATE         MM_DD_YYYY stamp for the graph folder when there is no build name (default: today)
 #   GANDALF_SKIP_AWS_CHECK     1 = don't ask AWS who we are up front (for a host that reaches S3 but not STS)
 #
-# The archive is compacted/gandalf_translatorkg_<release as MM_DD_YYYY>_<Gandalf version>[_<build id>].tar.gz, for
-# example gandalf_translatorkg_06_21_2026_v1.1.0_wffqr2d5.tar.gz. The version is `git describe --tags --dirty` run
-# next to gandalf-build-mongo, so that command has to be inside a Gandalf git checkout, at a tag.
+# The archive is compacted/gandalf_<Gandalf version>_translatorkg_<KGX release>[_<build id>].tar.gz, for example
+# gandalf_v1.1.0_translatorkg_v1.0.2_wffqr2d5.tar.gz. Both are written with a v in front, unless they already start
+# like a version. The Gandalf version is `git describe --tags --dirty` run next to gandalf-build-mongo, so that
+# command has to be inside a Gandalf git checkout, at a tag. The KGX release is GANDALF_RELEASE as it is.
 #
 # =============================================================================
 
@@ -138,15 +139,12 @@ if [[ ! "${DATE}" =~ ${date_re} ]]; then
     problem "GANDALF_BUILD_DATE must look like MM_DD_YYYY, for example 10_09_2026, because it names the graph folder. Got '${DATE}'"
 fi
 
-# the archive is dated with the KGX release, as MM_DD_YYYY
-release_re='^([0-9]{4})[_-](0[1-9]|1[0-2])[_-](0[1-9]|[12][0-9]|3[01])$'
-RELEASE_STAMP=""
+# the archive carries the KGX release as it is, so it has to be usable in a file name
+release_name_re='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 if [[ -z "${RELEASE}" ]]; then
-    problem "GANDALF_RELEASE is not set: the archive is dated with the KGX release, for example 2026_06_21 (the hub passes the release KgDumper recorded in src_dump)"
-elif [[ "${RELEASE}" =~ ${release_re} ]]; then
-    RELEASE_STAMP="${BASH_REMATCH[2]}_${BASH_REMATCH[3]}_${BASH_REMATCH[1]}"
-else
-    problem "GANDALF_RELEASE '${RELEASE}' is not a date like 2026_06_21, so the archive can't be dated with it"
+    problem "GANDALF_RELEASE is not set: the archive carries the KGX release, for example 1.0.2 (the hub passes the release KgDumper recorded in src_dump)"
+elif [[ ! "${RELEASE}" =~ ${release_name_re} || "${#RELEASE}" -gt 100 ]]; then
+    problem "GANDALF_RELEASE '${RELEASE}' can't be part of a file name: letters, digits, . _ and - only, starting with a letter or digit, at most 100 characters"
 fi
 
 # the build name becomes a folder name and a file name, so it must not be able to point anywhere else
@@ -232,7 +230,12 @@ fi
 # only talk to systemd and AWS once everything above is in order
 stop_if_problems
 
-ARCHIVE="${ARCHIVE_DIR}/gandalf_translatorkg_${RELEASE_STAMP}_${VERSION}${BUILD_ID:+_${BUILD_ID}}.tar.gz"
+# a version with a v in front, unless it already starts like one: 1.0.2 becomes v1.0.2, v1.1.0 stays
+with_v() {
+    local starts_with_v='^[vV][0-9]'
+    if [[ "$1" =~ ${starts_with_v} ]]; then printf '%s' "$1"; else printf 'v%s' "$1"; fi
+}
+ARCHIVE="${ARCHIVE_DIR}/gandalf_$(with_v "${VERSION}")_translatorkg_$(with_v "${RELEASE}")${BUILD_ID:+_${BUILD_ID}}.tar.gz"
 S3_URI="s3://${S3_BUCKET}/${S3_PREFIX:+${S3_PREFIX%/}/}$(basename "${ARCHIVE}")"
 
 # --- systemd and AWS: can this user really do what the last two steps need? ---
