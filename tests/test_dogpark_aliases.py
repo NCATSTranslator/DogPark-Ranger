@@ -16,9 +16,13 @@ class FakeElasticsearch:
         self.cluster_uuid = "cluster-1"
         self.entries = {}
         self.posts = []
+        self.deletes = []
         self.gets = []
         self.response = {"acknowledged": True, "errors": False}
         self.raise_after_apply = False
+        self.raise_after_delete = False
+        self.delete_error = None
+        self.partial_delete = False
         self.before_get = None
         self.health_overrides = {}
         self.cluster = Mock()
@@ -26,6 +30,7 @@ class FakeElasticsearch:
         self.indices = Mock()
         self.indices.get.side_effect = self.get_indices
         self.indices.update_aliases.side_effect = self.update_aliases
+        self.indices.delete.side_effect = self.delete_indices
         for name, alias_names in (entries or {}).items():
             self.add(name, alias_names)
 
@@ -77,6 +82,19 @@ class FakeElasticsearch:
         if self.raise_after_apply:
             raise TimeoutError("Response lost after application")
         return self.response
+
+    def delete_indices(self, *, index, expand_wildcards, allow_no_indices, ignore_unavailable):
+        self.deletes.append(list(index))
+        assert expand_wildcards == "none"
+        assert allow_no_indices is False
+        assert ignore_unavailable is False
+        if self.delete_error:
+            raise self.delete_error
+        for name in index[:1] if self.partial_delete else index:
+            del self.entries[name]
+        if self.raise_after_delete:
+            raise TimeoutError("Response lost after deletion")
+        return {"acknowledged": True}
 
 
 class AliasPolicyTests(unittest.TestCase):
@@ -132,20 +150,20 @@ class AliasPolicyTests(unittest.TestCase):
 
 
 class StagingTests(unittest.TestCase):
-    def test_replaces_staging_and_deprecates_old_in_one_request(self):
+    def test_replaces_staging_and_marks_old_for_deletion_in_one_request(self):
         old, new, live = [index("alliance", suffix) for suffix in ("old", "new", "live")]
         client = FakeElasticsearch({old: ["dingo_staging"], new: [], live: ["dingo"]})
         result = aliases.stage_indices(client, [new])
         self.assertTrue(result["verified"])
         self.assertTrue(result["applied"])
         self.assertEqual(1, len(client.posts))
-        self.assertEqual({"dingo_deprecated"}, client.entries[old]["aliases"])
+        self.assertEqual({"dingo_to_be_deleted"}, client.entries[old]["aliases"])
         self.assertEqual({"dingo_staging"}, client.entries[new]["aliases"])
         self.assertEqual({"dingo"}, client.entries[live]["aliases"])
         self.assertEqual(3, len(client.posts[0]))
         self.assertNotIn("*", client.gets[0]["index"])
 
-    def test_displaced_staging_that_is_live_is_not_deprecated(self):
+    def test_displaced_staging_that_is_live_is_not_marked_for_deletion(self):
         old, new = index("alliance", "old"), index("alliance", "new")
         client = FakeElasticsearch({old: ["dingo_staging", "dingo"], new: []})
         aliases.stage_indices(client, [new])
@@ -361,3 +379,253 @@ class MutationVerificationTests(unittest.TestCase):
         client.before_get = change_aliases
         with self.assertRaisesRegex(RuntimeError, "expected state"):
             aliases.release_indices(client, [name])
+
+    def test_readback_checks_other_profile_aliases_on_affected_index(self):
+        name = index("alliance", "new")
+        client = FakeElasticsearch({name: ["dingo", "prod_testing_staging"]})
+
+        def change_default_alias(call):
+            if call == 3:
+                client.entries[name]["aliases"].remove("dingo")
+
+        client.before_get = change_default_alias
+        with self.assertRaisesRegex(RuntimeError, "expected state"):
+            aliases.release_indices(client, [name], alias_profile="testing")
+
+
+class AliasProfileTests(unittest.TestCase):
+    def test_testing_profile_has_independent_normal_and_auxiliary_aliases(self):
+        expected = {
+            "alliance": ("prod_testing_staging", "prod_testing"),
+            "ubergraph_nodes": ("ubergraph_nodes_testing_staging", "ubergraph_nodes_testing"),
+            "ubergraph_nodes_info": ("ubergraph_nodes_mapping_testing_staging", "ubergraph_nodes_mapping_testing"),
+        }
+        for source, (staging, production) in expected.items():
+            self.assertEqual(
+                {"staging_alias": staging, "production_alias": production},
+                aliases.alias_policy(source, alias_profile="testing"),
+            )
+
+    def test_testing_stage_and_release_preserve_default_aliases(self):
+        live, staged, test_live, test_stage, incoming = [
+            index("alliance", suffix) for suffix in ("live", "staged", "testlive", "teststage", "incoming")
+        ]
+        client = FakeElasticsearch(
+            {
+                live: ["dingo"],
+                staged: ["dingo_staging"],
+                test_live: ["prod_testing"],
+                test_stage: ["prod_testing_staging"],
+                incoming: [],
+            }
+        )
+        aliases.stage_indices(client, [incoming], alias_profile="testing")
+        self.assertEqual({"prod_testing_to_be_deleted"}, client.entries[test_stage]["aliases"])
+        result = aliases.release_indices(client, alias_profile="testing")
+        self.assertEqual([incoming], result["indices"])
+        self.assertEqual({"prod_testing"}, client.entries[incoming]["aliases"])
+        self.assertEqual({"prod_testing_deprecated"}, client.entries[test_live]["aliases"])
+        self.assertEqual({"dingo"}, client.entries[live]["aliases"])
+        self.assertEqual({"dingo_staging"}, client.entries[staged]["aliases"])
+        for request in client.gets:
+            self.assertNotIn("dingo", request["index"])
+            self.assertNotIn("dingo_staging", request["index"])
+        for request in client.posts:
+            for action in request:
+                self.assertTrue(next(iter(action.values()))["alias"].startswith("prod_testing"))
+
+    def test_testing_staging_displacement_does_not_mark_default_live_index(self):
+        old, new = index("alliance", "old"), index("alliance", "new")
+        client = FakeElasticsearch({old: ["dingo", "prod_testing_staging"], new: []})
+        aliases.stage_indices(client, [new], alias_profile="testing")
+        self.assertEqual({"dingo"}, client.entries[old]["aliases"])
+
+    def test_default_release_does_not_discover_testing_staging(self):
+        name = index("alliance", "testing")
+        client = FakeElasticsearch({name: ["prod_testing_staging"]})
+        self.assertEqual([], aliases.release_indices(client)["indices"])
+        self.assertEqual({"prod_testing_staging"}, client.entries[name]["aliases"])
+        self.assertFalse(client.posts)
+
+    def test_staging_expectation_cannot_cross_profiles(self):
+        name = index("alliance", "new")
+        client = FakeElasticsearch({name: []})
+        expected = aliases.stage_indices(client, [name], dry_run=True)["staging_state"]
+        with self.assertRaisesRegex(RuntimeError, "Staging changed"):
+            aliases.stage_indices(client, [name], alias_profile="testing", expected_staging=expected)
+        self.assertFalse(client.posts)
+
+    def test_unknown_profile_fails_before_inventory_or_mutation(self):
+        name = index("alliance", "new")
+        for operation in (
+            aliases.stage_indices,
+            aliases.release_indices,
+            aliases.mark_for_deletion,
+            aliases.delete_indices,
+        ):
+            client = FakeElasticsearch({name: []})
+            with self.subTest(operation=operation.__name__), self.assertRaisesRegex(ValueError, "alias profile"):
+                operation(client, [name], alias_profile="typo")
+            self.assertFalse(client.gets)
+            self.assertFalse(client.posts)
+            self.assertFalse(client.deletes)
+
+
+class CleanupTests(unittest.TestCase):
+    def test_mark_then_delete_is_explicit_and_preserves_deprecated_tag_until_deletion(self):
+        name, untouched = index("alliance", "old"), index("bgee", "old")
+        client = FakeElasticsearch({name: ["dingo_deprecated"], untouched: ["dingo_deprecated"]})
+        mark_preview = aliases.mark_for_deletion(client, [name])
+        self.assertTrue(mark_preview["dry_run"])
+        self.assertTrue(mark_preview["actions"])
+        self.assertFalse(client.posts)
+        aliases.mark_for_deletion(client, [name], dry_run=False)
+        self.assertEqual({"dingo_deprecated", "dingo_to_be_deleted"}, client.entries[name]["aliases"])
+        retry = aliases.mark_for_deletion(client, [name], dry_run=False)
+        self.assertEqual([name], retry["already_marked"])
+        self.assertFalse(retry["applied"])
+        delete_preview = aliases.delete_indices(client)
+        self.assertEqual([name], delete_preview["indices"])
+        self.assertFalse(client.deletes)
+        result = aliases.delete_indices(
+            client, [name], dry_run=False, expected_index_uuids=delete_preview["index_uuids"]
+        )
+        self.assertTrue(result["verified"])
+        self.assertEqual([name], result["deleted"])
+        self.assertNotIn(name, client.entries)
+        self.assertEqual({"dingo_deprecated"}, client.entries[untouched]["aliases"])
+        self.assertEqual([[name]], client.deletes)
+
+    def test_cleanup_discovery_is_scoped_to_profile(self):
+        default, testing = index("alliance", "old"), index("bgee", "testold")
+        client = FakeElasticsearch({default: ["dingo_deprecated"], testing: ["prod_testing_deprecated"]})
+        marked = aliases.mark_for_deletion(client, alias_profile="testing", dry_run=False)
+        self.assertEqual([testing], marked["indices"])
+        self.assertEqual({"dingo_deprecated"}, client.entries[default]["aliases"])
+        deleted = aliases.delete_indices(client, alias_profile="testing", dry_run=False)
+        self.assertEqual([testing], deleted["deleted"])
+        self.assertIn(default, client.entries)
+
+    def test_delete_refuses_every_serving_or_application_alias_in_any_profile(self):
+        name = index("alliance", "old")
+        for protected in (
+            "dingo",
+            "dingo_staging",
+            "ubergraph_nodes",
+            "prod_testing",
+            "prod_testing_staging",
+            "other_app",
+            "dingo_deprecated",
+            "dingo_to_be_deleted",
+        ):
+            client = FakeElasticsearch({name: ["prod_testing_to_be_deleted", protected]})
+            with self.subTest(alias=protected), self.assertRaisesRegex(RuntimeError, "protected aliases"):
+                aliases.delete_indices(client, [name], alias_profile="testing", dry_run=False)
+            self.assertFalse(client.deletes)
+
+    def test_marking_refuses_foreign_profile_lifecycle_aliases(self):
+        name = index("alliance", "old")
+        client = FakeElasticsearch({name: ["prod_testing_deprecated", "dingo_deprecated"]})
+        with self.assertRaisesRegex(RuntimeError, "protected aliases"):
+            aliases.mark_for_deletion(client, [name], alias_profile="testing", dry_run=False)
+        self.assertFalse(client.posts)
+
+    def test_entire_cleanup_batch_is_validated_before_mutation(self):
+        valid, invalid = index("alliance", "old"), index("bgee", "old")
+        for operation, lifecycle in (
+            (aliases.mark_for_deletion, "dingo_deprecated"),
+            (aliases.delete_indices, "dingo_to_be_deleted"),
+        ):
+            for invalid_flags in ([], ["dingo"], [lifecycle, "other_app"]):
+                client = FakeElasticsearch({valid: [lifecycle], invalid: invalid_flags})
+                with self.subTest(operation=operation.__name__, flags=invalid_flags), self.assertRaises(RuntimeError):
+                    operation(client, [valid, invalid], dry_run=False)
+                self.assertFalse(client.posts)
+                self.assertFalse(client.deletes)
+
+    def test_cleanup_needs_selected_profile_lifecycle_tag(self):
+        name = index("alliance", "old")
+        client = FakeElasticsearch({name: []})
+        with self.assertRaisesRegex(RuntimeError, "not marked for deletion"):
+            aliases.delete_indices(client, [name], alias_profile="testing", dry_run=False)
+        with self.assertRaisesRegex(RuntimeError, "not deprecated"):
+            aliases.mark_for_deletion(client, [name], alias_profile="testing", dry_run=False)
+        self.assertFalse(client.deletes)
+        self.assertFalse(client.posts)
+
+    def test_expected_preview_uuid_and_selection_must_still_match(self):
+        name, additional = index("alliance", "old"), index("bgee", "old")
+        for change in ("uuid", "selection"):
+            client = FakeElasticsearch({name: ["dingo_to_be_deleted"]})
+            preview = aliases.delete_indices(client)
+            if change == "uuid":
+                client.entries[name]["uuid"] = "replacement-index"
+            else:
+                client.add(additional, ["dingo_to_be_deleted"])
+            with self.subTest(change=change), self.assertRaisesRegex(RuntimeError, "reviewed preview"):
+                aliases.delete_indices(client, dry_run=False, expected_index_uuids=preview["index_uuids"])
+            self.assertFalse(client.deletes)
+
+    def test_deletion_rechecks_uuid_cluster_and_protected_aliases_before_delete(self):
+        name = index("alliance", "old")
+        for change in ("uuid", "cluster", "alias"):
+            client = FakeElasticsearch({name: ["dingo_to_be_deleted"]})
+
+            def drift(call):
+                if call == 2:
+                    if change == "uuid":
+                        client.entries[name]["uuid"] = "replacement-index"
+                    elif change == "cluster":
+                        client.cluster_uuid = "replacement-cluster"
+                    else:
+                        client.entries[name]["aliases"].add("dingo")
+
+            client.before_get = drift
+            with self.subTest(change=change), self.assertRaises(RuntimeError):
+                aliases.delete_indices(client, [name], dry_run=False)
+            self.assertFalse(client.deletes)
+
+    def test_mark_rechecks_nonprofile_aliases_before_mutation(self):
+        name = index("alliance", "old")
+        client = FakeElasticsearch({name: ["prod_testing_deprecated"]})
+
+        def drift(call):
+            if call == 2:
+                client.entries[name]["aliases"].add("dingo")
+
+        client.before_get = drift
+        with self.assertRaisesRegex(RuntimeError, "identity drifted"):
+            aliases.mark_for_deletion(client, [name], alias_profile="testing", dry_run=False)
+        self.assertFalse(client.posts)
+
+    def test_uncertain_deletion_recovers_only_after_exact_absence_readback(self):
+        name = index("alliance", "old")
+        client = FakeElasticsearch({name: ["dingo_to_be_deleted"]})
+        client.raise_after_delete = True
+        result = aliases.delete_indices(client, [name], dry_run=False)
+        self.assertTrue(result["verified"])
+        self.assertTrue(result["recovered_after_error"])
+        self.assertEqual([[name]], client.deletes)
+
+    def test_failed_or_partial_deletion_is_not_resubmitted(self):
+        names = [index(source, "old") for source in ("alliance", "bgee")]
+        for failure in ("refused", "partial"):
+            client = FakeElasticsearch({name: ["dingo_to_be_deleted"] for name in names})
+            if failure == "refused":
+                client.delete_error = RuntimeError("Forbidden")
+            else:
+                client.partial_delete = True
+            with self.subTest(failure=failure), self.assertRaisesRegex(RuntimeError, "expected state"):
+                aliases.delete_indices(client, names, dry_run=False)
+            self.assertEqual([names], client.deletes)
+
+    def test_missing_explicit_indices_fail_and_empty_cleanup_is_noop(self):
+        client = FakeElasticsearch()
+        for operation in (aliases.mark_for_deletion, aliases.delete_indices):
+            with self.subTest(operation=operation.__name__), self.assertRaisesRegex(RuntimeError, "missing"):
+                operation(client, [index("alliance", "gone")], dry_run=False)
+            result = operation(client, dry_run=False)
+            self.assertTrue(result["verified"])
+            self.assertFalse(result["applied"])
+        self.assertFalse(client.deletes)
+        self.assertFalse(client.posts)

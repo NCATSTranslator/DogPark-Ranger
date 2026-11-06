@@ -4,7 +4,7 @@ Run commands against the Hub with `dogpark run COMMAND [ARGS]`.
 
 | Hook | Commands |
 | --- | --- |
-| `dogpark_release.py` | Assign staging aliases and promote current staging indices. |
+| `dogpark_release.py` | Assign staging aliases, promote indices, and manage deletion tags/removal. |
 | `dogpark_snapshots.py` | Create, inspect, and install snapshots. See [snapshot usage](snapshots-native.md). |
 | `dogpark_dev.py` | Reload snapshot hooks after uploading edits. |
 
@@ -55,7 +55,7 @@ dogpark run assign_staging_tag itrb-ci alliance_20261105_abcd1234
 
 `assign_staging_tags INDEXER_ENV --index-names '["INDEX_NAME", "OTHER_INDEX"]'`
 handles an explicit batch. Staging replaces the prior staged holder of each
-selected dataset and marks it deprecated, unless it still serves production.
+selected dataset and marks it `dingo_to_be_deleted`, unless it still serves production.
 An already-live index is a no-op. Deprecated or deletion-tagged incoming indices
 are rejected.
 
@@ -78,6 +78,59 @@ The old `plan_staging_tags`, `plan_release_manifest`, `freeze_release_manifest`,
 `get_release_manifest`, `assign_staging_manifest`, `plan_prod_release`, and
 `release_prod_manifest` commands are removed. Use `--dry-run` on tagging or
 `release_prod` for previews. Existing manifest files are no longer release inputs.
+
+## Cleanup
+
+Lifecycle tags have separate purposes:
+
+| Event | Result |
+| --- | --- |
+| A staging index is replaced before release | The old staging index receives `dingo_to_be_deleted`, unless it still serves production. |
+| A production index is replaced | The old production index receives `dingo_deprecated`. |
+| `mark_for_deletion` selects a deprecated index | It also receives `dingo_to_be_deleted`. |
+| `delete_indices` selects a deletion-tagged index | Its concrete Elasticsearch index is physically removed. |
+
+Both cleanup commands default to dry runs. They never run as part of installation
+or production release. There is no automatic release-count or time-based aging.
+
+```bash
+# Review deprecated indices, then explicitly mark the chosen names.
+dogpark run mark_for_deletion itrb-ci --index-names '["OLD_INDEX"]'
+dogpark run mark_for_deletion itrb-ci --index-names '["OLD_INDEX"]' --no-dry-run
+
+# Review deletion candidates and their index_uuids.
+dogpark run delete_indices itrb-ci --index-names '["OLD_INDEX"]'
+```
+
+To execute deletion, pass `--no-dry-run` and preferably the preview's
+`--expected-index-uuids '{"OLD_INDEX":"REVIEWED_UUID"}'`. Only exact concrete
+indices tagged for deletion in the selected profile are eligible. Any serving,
+staging, foreign-profile, or other application alias blocks cleanup. The whole
+selection is checked before mutation, with cluster/index identity checks and
+post-operation verification. Omitting `--index-names` selects the current
+profile's deprecated or deletion-tagged indices, respectively.
+
+## Isolated CI tests
+
+All alias-changing commands, including installation, accept
+`--alias-profile testing`. The default profile retains the production names
+shown above. The testing profile uses `prod_testing_staging` → `prod_testing`,
+separate auxiliary staging/production pairs, and `prod_testing_deprecated` /
+`prod_testing_to_be_deleted`. Selection and readback stay within that profile.
+
+```bash
+dogpark run assign_staging_tags itrb-ci --index-names '["INDEX_NAME"]' --alias-profile testing --dry-run
+dogpark run release_prod itrb-ci --alias-profile testing --dry-run
+```
+
+Use existing recovered, untagged CI indices to test manual tagging, then the
+isolated release aliases. Snapshot creation has already been validated onsite;
+the remaining snapshot test needs only one installation of an existing ad-hoc
+snapshot. Installation/staging tests can run on the test cluster described in
+[snapshot configuration](snapshots-native.md#test-cluster-configuration).
+Production-release tests on that cluster are excluded. A full workflow on the
+dev cluster can be scheduled later. No live test or reload is performed by these
+configuration changes.
 
 ## Load and update
 

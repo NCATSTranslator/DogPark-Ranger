@@ -7,8 +7,9 @@
 | --- | --- | --- |
 | `s3_dogpark` | `su12` | Create and inspect snapshots. |
 | `ci_snapshots` | `itrb-ci` | Inspect and install snapshots on CI. |
+| `test_snapshots` | `itrb-test` | Inspect, install, and stage snapshots on test after applying the configuration overlay below. |
 
-Both environments expose the shared `dogpark_repository`. Configure the target
+These environments expose the shared `dogpark_repository`. Configure the target
 repository as read-only. Inspection and installation require repository settings
 that resolve without build metadata. See [hook loading](README.md#load-and-update).
 
@@ -77,11 +78,13 @@ inspection output is optional.
   without aliases or global cluster state. Elasticsearch enforces version compatibility.
   After every index has recovered its primary shards, installation assigns the
   staging aliases described in [release usage](README.md#releases) in one update.
-  Replaced staging indices are deprecated unless still live. Failed batches leave
+  Replaced staging indices receive `to_be_deleted` in the selected alias profile,
+  unless still live. Failed batches leave
   existing staging unchanged, although successful restores remain installed.
   Recovery monitoring has a deadline; a timeout does not delete the restored index.
 
-Use `--no-stage` to restore without changing any release aliases. `--sources`
+Use `--alias-profile testing` for isolated CI aliases, or `--no-stage` to restore
+without changing release aliases. `--sources`
 accepts an index-to-dataset mapping for custom names when staging is enabled.
 One-off and batch installs follow the same path. Auxiliary node and mapping
 builds are included in automatic snapshot discovery.
@@ -92,3 +95,36 @@ installation. After an uncertain submission, inspect the target before retrying;
 Elasticsearch may already be restoring the index. If restoration completed but
 staging failed, use `assign_staging_tag` or `assign_staging_tags` on the verified
 installed indices instead of restoring them again.
+
+## Test cluster configuration
+
+In the deployment's `config.py`, after the existing CI snapshot configuration:
+
+```python
+from hub.snapshot_config import add_test_snapshots
+
+INDEX_CONFIG, SNAPSHOT_CONFIG = add_test_snapshots(INDEX_CONFIG, SNAPSHOT_CONFIG)
+```
+
+Deploy `hub/snapshot_config.py` with the hooks. This overlay adds an `itrb-test`
+indexer environment at `http://tier1-dogpark.test.transltr.io:9200` and a
+`test_snapshots` snapshot environment. It reuses `ci_snapshots` repository/cloud
+settings, forces the repository read-only, and replaces the complete copied
+indexer reference so CI hosts cannot leak into the test connection. Existing
+explicit test indexer settings, including auth/TLS, are preserved. An existing
+test endpoint equal to CI is rejected. CI settings must exist before applying
+the overlay; this repository does not contain their deployed storage credentials.
+
+The test cluster must already expose the same snapshot repository registered
+read-only. The overlay and installer do not register it. Configuration changes
+require a Hub restart. Once connectivity is available, inspect and preview a
+single installation:
+
+```bash
+dogpark run get_snapshots_release test_snapshots --index-names '["INDEX_NAME"]'
+dogpark run install_snapshots test_snapshots --index-names '["INDEX_NAME"]' --dry-run
+```
+
+Live test execution remains deferred. Test-cluster validation covers restoration
+and staging only; it does not call `release_prod`. The dev cluster can support a
+separate full release workflow later.

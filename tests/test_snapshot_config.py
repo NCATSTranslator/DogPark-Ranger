@@ -43,6 +43,12 @@ class SnapshotConfigTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "configured.*snapshot repository"):
             add_test_snapshots({"env": {}}, {})
 
+    def test_existing_test_indexer_cannot_point_at_ci(self):
+        indices, snapshots = self.configs()
+        indices["env"]["itrb-test"] = {"host": "http://ci.invalid:9200/"}
+        with self.assertRaisesRegex(ValueError, "different Elasticsearch endpoints"):
+            add_test_snapshots(indices, snapshots)
+
     def test_refuses_overwriting_existing_or_reusing_ci_environment(self):
         indices, snapshots = self.configs()
         snapshots["env"]["test_snapshots"] = {"indexer": "already-configured"}

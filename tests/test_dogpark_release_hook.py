@@ -28,7 +28,7 @@ class HookTests(unittest.TestCase):
         ) as release:
             result = HOOK.release_prod("ci", ["alliance"], dry_run=True)
         factory.assert_called_once_with(**config)
-        release.assert_called_once_with(client, ["alliance"], sources=None, dry_run=True)
+        release.assert_called_once_with(client, ["alliance"], sources=None, dry_run=True, alias_profile="default")
         client.close.assert_called_once_with()
         self.assertEqual("ci", result["indexer_env"])
 
@@ -39,7 +39,9 @@ class HookTests(unittest.TestCase):
             HOOK, "_DogParkReleaseElasticsearch", return_value=client
         ), patch.object(HOOK._dogpark_aliases, "stage_indices", return_value={}) as stage:
             HOOK.assign_staging_tag("prod", "custom-index", source="alliance")
-        stage.assert_called_once_with(client, ["custom-index"], sources={"custom-index": "alliance"}, dry_run=False)
+        stage.assert_called_once_with(
+            client, ["custom-index"], sources={"custom-index": "alliance"}, dry_run=False, alias_profile="default",
+        )
         client.close.assert_called_once_with()
 
     def test_closes_client_on_preflight_failure(self):
@@ -57,6 +59,33 @@ class HookTests(unittest.TestCase):
                 HOOK.release_prod("missing")
         factory.assert_not_called()
 
+    def test_testing_profile_and_cleanup_defaults_pass_through(self):
+        client = Mock()
+        with patch.dict(HOOK.__dict__, {"im": {"ci": {"args": {"hosts": "https://ci.invalid"}}}}), patch.object(
+            HOOK, "_DogParkReleaseElasticsearch", return_value=client
+        ), patch.object(HOOK._dogpark_aliases, "release_indices", return_value={}) as release, patch.object(
+            HOOK._dogpark_aliases, "mark_for_deletion", return_value={}
+        ) as mark, patch.object(HOOK._dogpark_aliases, "delete_indices", return_value={}) as delete:
+            HOOK.release_prod("ci", ["alliance"], alias_profile="testing")
+            HOOK.mark_for_deletion("ci", ["old-index"], alias_profile="testing")
+            HOOK.delete_indices("ci", ["old-index"], alias_profile="testing")
+        release.assert_called_once_with(client, ["alliance"], sources=None, dry_run=False, alias_profile="testing")
+        mark.assert_called_once_with(client, ["old-index"], dry_run=True, alias_profile="testing")
+        delete.assert_called_once_with(
+            client, ["old-index"], dry_run=True, alias_profile="testing", expected_index_uuids=None,
+        )
+
+    def test_cleanup_execute_passes_reviewed_index_uuids(self):
+        client = Mock()
+        identities = {"old-index": "reviewed-uuid"}
+        with patch.dict(HOOK.__dict__, {"im": {"ci": {"args": {"hosts": "https://ci.invalid"}}}}), patch.object(
+            HOOK, "_DogParkReleaseElasticsearch", return_value=client
+        ), patch.object(HOOK._dogpark_aliases, "delete_indices", return_value={"deleted": ["old-index"]}) as delete:
+            HOOK.delete_indices("ci", ["old-index"], dry_run=False, expected_index_uuids=identities)
+        delete.assert_called_once_with(
+            client, ["old-index"], dry_run=False, alias_profile="default", expected_index_uuids=identities,
+        )
+
     def test_shared_hub_namespace_has_no_file_and_shadows_list(self):
         shadow = Mock(side_effect=AssertionError("Hub list command was called"))
         hub = Mock()
@@ -64,7 +93,10 @@ class HookTests(unittest.TestCase):
         hub.commands, hub.hidden = {}, {}
         namespace = {"__name__": "hub_shell", "list": shadow, "hub": hub}
         exec(compile(PATH.read_text(), "<hub-hook>", "exec"), namespace, namespace)
-        self.assertEqual(["assign_staging_tag", "assign_staging_tags", "release_prod"], namespace["__all__"])
+        self.assertEqual(
+            ["assign_staging_tag", "assign_staging_tags", "release_prod", "mark_for_deletion", "delete_indices"],
+            namespace["__all__"],
+        )
         for name in namespace["__all__"]:
             self.assertEqual("dry_run", namespace[name].confirm)
             self.assertIs(namespace[name], hub.commands[name])

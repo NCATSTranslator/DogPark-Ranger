@@ -39,14 +39,28 @@ def add_test_snapshots(
     if snapshot_env in snapshots["env"]:
         raise ValueError(f"Snapshot environment {snapshot_env!r} already exists")
     template_indexer = environment.get("indexer")
-    template_indexer = template_indexer.get("name", template_indexer.get("env")) if isinstance(template_indexer, dict) else template_indexer
+    template_args = template_indexer.get("args", {}) if isinstance(template_indexer, dict) else {}
+    if isinstance(template_indexer, dict):
+        template_indexer = template_indexer.get("name", template_indexer.get("env"))
     if indexer_env == template_indexer:
         raise ValueError("Test and template indexer environments must be different")
-    indices.setdefault("env", {}).setdefault(indexer_env, {
-        "host": host,
-        "indexer": {"args": {"request_timeout": 300, "retry_on_timeout": False, "max_retries": 0}},
-        "index": [],
-    })
+    indices.setdefault("env", {}).setdefault(
+        indexer_env,
+        {
+            "host": host,
+            "indexer": {"args": {"request_timeout": 300, "retry_on_timeout": False, "max_retries": 0}},
+            "index": [],
+        },
+    )
+    template_host = indices["env"].get(template_indexer, {}).get("host", template_args.get("hosts"))
+    target_host = indices["env"][indexer_env].get("host")
+
+    def hosts(value):
+        values = value if isinstance(value, (list, tuple)) else [value]
+        return {item.rstrip("/") for item in values if isinstance(item, str)}
+
+    if hosts(template_host) & hosts(target_host):
+        raise ValueError("Test and CI indexer environments must use different Elasticsearch endpoints")
     # Native SnapshotManager expands indexer into a dict containing client args.
     # Replace the whole value so copied CI hosts cannot leak into the test target.
     environment["indexer"] = indexer_env

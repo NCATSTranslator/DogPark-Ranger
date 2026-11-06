@@ -122,10 +122,6 @@ def _managed_aliases(alias_profile="default"):
     return aliases
 
 
-def _lifecycle_aliases():
-    return {profile[key] for profile in ALIAS_PROFILES.values() for key in ("deprecated_alias", "delete_alias")}
-
-
 def _production_aliases():
     return {
         alias_policy(source, alias_profile=profile)["production_alias"]
@@ -271,13 +267,17 @@ def _action(operation, name, alias):
 def _apply(client, cluster_uuid, inventory, names, actions, dry_run, alias_profile):
     expected = _alias_state(inventory, alias_profile)
     identities = {name: _uuid(inventory, name) for name in names if name in inventory}
+    expected_index_aliases = {name: set(inventory[name]["aliases"]) for name in identities}
     for action in actions:
         operation, details = next(iter(action.items()))
         holders = set(expected[details["alias"]])
+        index_aliases = expected_index_aliases.setdefault(details["index"], set())
         if operation == "add":
             holders.add(details["index"])
+            index_aliases.add(details["alias"])
         else:
             holders.remove(details["index"])
+            index_aliases.remove(details["alias"])
         expected[details["alias"]] = sorted(holders)
     if dry_run:
         return {"applied": False, "verified": False, "expected_aliases": expected}
@@ -285,9 +285,12 @@ def _apply(client, cluster_uuid, inventory, names, actions, dry_run, alias_profi
         raise RuntimeError("Elasticsearch cluster identity changed before alias mutation")
     before = _inventory(client, names, alias_profile=alias_profile)
     if _alias_state(before, alias_profile) != _alias_state(inventory, alias_profile) or any(
-        _uuid(before, name) != uuid for name, uuid in identities.items()
+        _uuid(before, name) != uuid or before[name]["aliases"] != inventory[name]["aliases"]
+        for name, uuid in identities.items()
     ):
         raise RuntimeError("Alias or index identity drifted before mutation")
+    if _cluster_uuid(client) != cluster_uuid:
+        raise RuntimeError("Elasticsearch cluster identity changed before alias mutation")
     response = None
     error = None
     if actions:
@@ -303,7 +306,10 @@ def _apply(client, cluster_uuid, inventory, names, actions, dry_run, alias_profi
     verified = (
         _cluster_uuid(client) == cluster_uuid
         and _alias_state(after, alias_profile) == expected
-        and all(_uuid(after, name) == uuid for name, uuid in identities.items())
+        and all(
+            _uuid(after, name) == uuid and after[name]["aliases"] == expected_index_aliases[name]
+            for name, uuid in identities.items()
+        )
     )
     if not verified:
         raise RuntimeError(
@@ -425,7 +431,9 @@ def release_indices(client, index_names=None, *, sources=None, dry_run=False, al
         }
 
 
-def _cleanup_targets(inventory, index_names, alias):
+def _cleanup_targets(inventory, index_names, alias, alias_profile):
+    profile = _profile(alias_profile)
+    lifecycle = {profile["deprecated_alias"], profile["delete_alias"]}
     names = (
         sorted(name for name, info in inventory.items() if alias in info["aliases"])
         if index_names is None
@@ -433,7 +441,7 @@ def _cleanup_targets(inventory, index_names, alias):
     )
     for name in names:
         _uuid(inventory, name)
-        protected = inventory[name]["aliases"] - _lifecycle_aliases()
+        protected = inventory[name]["aliases"] - lifecycle
         if protected:
             raise RuntimeError(f"Index {name!r} has protected aliases: {sorted(protected)!r}")
     return names
@@ -448,7 +456,7 @@ def mark_for_deletion(client, index_names=None, *, alias_profile="default", dry_
     cluster_uuid = _cluster_uuid(client)
     with cluster_lock(cluster_uuid):
         inventory = _inventory(client, names or (), alias_profile=alias_profile)
-        names = _cleanup_targets(inventory, names, profile["deprecated_alias"])
+        names = _cleanup_targets(inventory, names, profile["deprecated_alias"], alias_profile)
         actions = []
         already_marked = []
         for name in names:
@@ -481,7 +489,7 @@ def delete_indices(client, index_names=None, *, alias_profile="default", dry_run
     cluster_uuid = _cluster_uuid(client)
     with cluster_lock(cluster_uuid):
         inventory = _inventory(client, names or (), alias_profile=alias_profile)
-        names = _cleanup_targets(inventory, names, profile["delete_alias"])
+        names = _cleanup_targets(inventory, names, profile["delete_alias"], alias_profile)
         for name in names:
             if profile["delete_alias"] not in inventory[name]["aliases"]:
                 raise RuntimeError(f"Index {name!r} is not marked for deletion in alias profile {alias_profile!r}")
@@ -505,9 +513,11 @@ def delete_indices(client, index_names=None, *, alias_profile="default", dry_run
         if _cluster_uuid(client) != cluster_uuid:
             raise RuntimeError("Elasticsearch cluster identity changed before deletion")
         before = _inventory(client, names, alias_profile=alias_profile)
-        _cleanup_targets(before, names, profile["delete_alias"])
+        _cleanup_targets(before, names, profile["delete_alias"], alias_profile)
         if any(before[name] != inventory[name] for name in names):
             raise RuntimeError("Alias or index identity drifted before deletion")
+        if _cluster_uuid(client) != cluster_uuid:
+            raise RuntimeError("Elasticsearch cluster identity changed before deletion")
         error = None
         if names:
             try:
