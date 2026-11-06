@@ -3,13 +3,12 @@ import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR))
 
-from hooks import dogpark_snapshots as hook
-from hooks.dogpark_hook_utils import builds
+from hooks.dogpark_hook_utils import aliases, builds
 
 
 class ReloadTests(unittest.TestCase):
@@ -36,9 +35,9 @@ class ReloadTests(unittest.TestCase):
             "_id": "alliance_build", "build_config": {"name": "alliance"},
             "index": {"alliance_build": {"environment": "builder"}},
         }]
-        namespace["get_src_build_collection"] = Mock(return_value=collection)
         namespace["_snapshot_state"] = Mock(return_value="MISSING")
-        namespace["create_snapshots"]("auto", ["alliance_build"])
+        with patch.object(namespace["_snapshot_builds"], "get_src_build_collection", return_value=collection):
+            namespace["create_snapshots"]("auto", ["alliance_build"])
         namespace["ssm"].snapshot.assert_called_once_with("auto", "alliance_build")
         namespace["list"].assert_not_called()
         for name in ("create_snapshots", "get_snapshots_release", "install_snapshots"):
@@ -52,26 +51,24 @@ class ReloadTests(unittest.TestCase):
         old_create = namespace["create_snapshots"]
         old_helper = builds.get_available_builds
         manager = namespace["ssm"]
-        original_helper = hook.get_available_builds
         try:
             with patch.object(importlib, "reload", wraps=importlib.reload) as reload_module:
                 result = namespace["reload_snapshot_hooks"]()
-            reload_module.assert_called_once_with(builds)
+            self.assertEqual(reload_module.call_args_list, [call(builds), call(aliases)])
             self.assertIsNot(namespace["create_snapshots"], old_create)
             self.assertIsNot(builds.get_available_builds, old_helper)
-            self.assertIs(namespace["get_available_builds"], builds.get_available_builds)
+            self.assertIs(namespace["_snapshot_builds"], builds)
             self.assertIs(namespace["ssm"], manager)
             self.assertIs(namespace["hub"], shell)
             self.assertIs(shell.commands["create_snapshots"], namespace["create_snapshots"])
             self.assertIn("reload_snapshot_hooks", shell.commands)
             self.assertFalse(shell.hidden["reload_snapshot_hooks"])
-            self.assertEqual(Path(result["reloaded"][1]).name, "dogpark_snapshots.py")
+            self.assertEqual(Path(result["reloaded"][-1]).name, "dogpark_snapshots.py")
             shell.restart.assert_not_called()
             manager.snapshot.assert_not_called()
         finally:
             # Keep other tests' imported references intact after exercising reload.
             builds.get_available_builds = old_helper
-            hook.get_available_builds = original_helper
 
     def test_native_loader_owns_command_registration(self):
         namespace, shell = self.namespace()
@@ -88,11 +85,11 @@ class ReloadTests(unittest.TestCase):
         self.load("dogpark_dev.py", namespace)
         with patch.object(importlib, "reload") as reload_module:
             result = namespace["reload_snapshot_hooks"]()
-        reload_module.assert_called_once_with(builds)
+        self.assertEqual(reload_module.call_args_list, [call(builds), call(aliases)])
         shell.server.process_hook_file.assert_called_once_with(
             str(PROJECT_DIR / "hooks" / "dogpark_snapshots.py")
         )
-        self.assertEqual(Path(result["reloaded"][1]).name, "dogpark_snapshots.py")
+        self.assertEqual(Path(result["reloaded"][-1]).name, "dogpark_snapshots.py")
         self.assertNotIn("create_snapshots", namespace)
         shell.restart.assert_not_called()
 

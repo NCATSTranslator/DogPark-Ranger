@@ -11,23 +11,28 @@ __all__ = ["reload_snapshot_hooks"]
 
 
 def reload_snapshot_hooks():
-    """Read updated snapshot hooks and build helpers without restarting the Hub."""
+    """Read snapshot hooks and shared build/alias helpers without restarting."""
     import importlib
     from pathlib import Path
-    from hooks.dogpark_hook_utils import builds
+    from hooks.dogpark_hook_utils import aliases, builds
 
     # Hook files have no __file__ in the Hub; imported modules do.
     path = Path(builds.__file__).resolve().parents[1] / "dogpark_snapshots.py"
     code = compile(path.read_text(encoding="utf-8"), str(path), "exec")
+    # Validate every file before replacing any helper module's globals.
+    for module in (builds, aliases):
+        helper_path = Path(module.__file__).resolve()
+        compile(helper_path.read_text(encoding="utf-8"), str(helper_path), "exec")
     importlib.invalidate_caches()
     importlib.reload(builds)
+    importlib.reload(aliases)
     server = getattr(hub, "server", None)
     if hasattr(server, "terminal"):
         # Keep BioThings 1.3's command catalog and hook origins up to date.
         server.process_hook_file(str(path))
     else:
         exec(code, hub.extra_ns, hub.extra_ns)
-    return {"reloaded": [str(Path(builds.__file__).resolve()), str(path)]}
+    return {"reloaded": [str(Path(builds.__file__).resolve()), str(Path(aliases.__file__).resolve()), str(path)]}
 
 
 # BioThings 1.3 registers __all__; older Hubs need explicit registration.

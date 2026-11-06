@@ -222,3 +222,6 @@ plugins/*/hub/
 
 # jetbrains configs
 .idea
+
+# Local hook manifests, receipts and snapshot-transfer records
+/release-records/

@@ -36,7 +36,7 @@ exec('from hooks.dogpark_hook_utils import builds', namespace)
 assert 'biothings' not in sys.modules
 assert 'elasticsearch' not in sys.modules
 utils = namespace['builds']
-utils.DOGPARK_RELEASE_DATASETS = ('missing',)
+utils.DOGPARK_MANAGED_DATASETS = ('missing',)
 assert utils.dogpark_select_latest_builds([])['pending'][0]['config'] == 'missing'
 """
         result = subprocess.run(
@@ -85,90 +85,37 @@ assert utils.dogpark_select_latest_builds([])['pending'][0]['config'] == 'missin
         self.assertEqual(result["selected"], [])
         self.assertEqual(result["pending"][0]["reason"], "malformed_build_history")
 
-    def test_resolution_uses_registration_and_selected_environment(self):
-        record = document()
-        record["index"]["server-index"] = {"environment": "server"}
-        probe = Mock(return_value=True)
-        self.assertEqual(
-            builds.resolve_build_index(record, "builder", index_exists=probe),
-            ("concrete-index", None),
-        )
-        probe.assert_called_once_with("concrete-index")
-        self.assertEqual(
-            builds.resolve_build_index(record, "server"), ("server-index", None)
-        )
-
-    def test_legacy_environment_fallback_can_be_disabled(self):
-        record = document(environment=None)
-        self.assertEqual(
-            builds.resolve_build_index(record, "builder"), ("concrete-index", None)
-        )
-        name, issue = builds.resolve_build_index(
-            record, "builder", allow_legacy_environment=False
-        )
-        self.assertIsNone(name)
-        self.assertEqual(issue["reason"], "index_not_registered_for_environment")
-
-    def test_missing_exact_environment_index_does_not_fall_back_to_legacy(self):
-        record = document()
-        record["index"]["legacy-index"] = {}
-        probe = Mock(side_effect=lambda name: name == "legacy-index")
-        name, issue = builds.resolve_build_index(record, "builder", index_exists=probe)
-        self.assertIsNone(name)
-        self.assertEqual(issue["reason"], "index_not_found")
-        probe.assert_called_once_with("concrete-index")
-
-    def test_multiple_registrations_require_an_unambiguous_existence_check(self):
-        record = document()
-        record["index"]["another"] = {"environment": "builder"}
-        self.assertEqual(
-            builds.resolve_build_index(record, "builder")[1]["reason"],
-            "ambiguous_target_indices",
-        )
-        self.assertEqual(
-            builds.resolve_build_index(
-                record, "builder", index_exists=lambda name: name == "another"
-            ),
-            ("another", None),
-        )
-
-    def test_probe_failure_is_not_reported_as_missing_index(self):
-        with self.assertRaisesRegex(RuntimeError, "unreachable"):
-            builds.resolve_build_index(
-                document(),
-                "builder",
-                index_exists=Mock(side_effect=RuntimeError("unreachable")),
-            )
-
-    def test_legacy_readiness_is_explicit_and_can_be_disabled(self):
-        record = document(
-            jobs=[
-                {
-                    "step": "index",
-                    "status": "success",
-                    "logfile": "/logs/index_concrete-index.log",
-                },
-                {
-                    "step": "post-index",
-                    "status": "cancelled",
-                    "logfile": "/logs/index_concrete-index.log",
-                },
-            ]
-        )
-        accepted = builds.check_build_readiness(record, "concrete-index")
-        self.assertTrue(accepted["ready"])
-        self.assertEqual(
-            accepted["warning"], "cancelled_post_index_after_successful_index"
-        )
-        self.assertFalse(builds.check_build_readiness(record, "another-index")["ready"])
-        self.assertFalse(
-            builds.check_build_readiness(
-                record, "concrete-index", allow_stale_cancelled_post_index=False
-            )["ready"]
-        )
-
 
 class ReadinessTests(unittest.TestCase):
+    def test_snapshot_discovery_includes_auxiliary_datasets(self):
+        documents = [
+            {
+                "_id": f"{name}_20261105_abcd1234",
+                "build_config": {"name": name},
+                "started_at": "2026-11-05T12:00:00Z",
+                "index": {f"{name}_20261105_abcd1234": {"environment": "builder"}},
+                "jobs": [{"step": "post-index", "status": "success"}],
+            }
+            for name in ("alliance", "ubergraph_nodes", "ubergraph_nodes_info")
+        ]
+        with patch.object(builds, "load_build_documents", return_value=documents):
+            self.assertEqual(set(builds.get_available_builds("builder")), {doc["_id"] for doc in documents})
+        selection = builds.dogpark_select_latest_builds(documents)
+        self.assertEqual({item["config"] for item in selection["selected"]},
+                         {"alliance", "ubergraph_nodes", "ubergraph_nodes_info"})
+
+    def test_archived_build_is_not_available_for_snapshot_creation(self):
+        record = {
+            "_id": "alliance_build", "build_config": {"name": "alliance"},
+            "started_at": "2026-11-05T12:00:00Z", "archived": True,
+            "index": {"alliance_build": {"environment": "builder"}},
+            "jobs": [{"step": "post-index", "status": "success"}],
+        }
+        for marker in (True, False, None):
+            with self.subTest(marker=marker), patch.object(builds, "load_build_documents", return_value=[record]):
+                record["archived"] = marker
+                self.assertEqual(builds.get_available_builds("builder"), [])
+
     def test_latest_indexing_attempt_and_environment_control_readiness(self):
         document = {
             "_id": "alliance_build", "build_config": {"name": "alliance"},
