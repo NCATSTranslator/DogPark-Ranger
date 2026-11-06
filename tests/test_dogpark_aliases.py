@@ -98,6 +98,25 @@ class FakeElasticsearch:
 
 
 class AliasPolicyTests(unittest.TestCase):
+    def test_legacy_deployment_suffix_resolves_complete_allowed_dataset_names(self):
+        for source in ("alliance", "ubergraph_nodes", "ubergraph_nodes_info"):
+            for deployment in ("ci", "test", "prod", "dev"):
+                name = f"{source}_20261015_{deployment}_9e0eed3c"
+                with self.subTest(name=name):
+                    self.assertEqual(source, aliases.resolve_dataset(name))
+        for name in (
+            "alliance_20261301_ci_9e0eed3c",
+            "alliance_20260230_ci_9e0eed3c",
+            "foreign_20261015_ci_9e0eed3c",
+            "ubergraph_nodes_extra_20261015_ci_9e0eed3c",
+            "alliance_20261015_unknown_9e0eed3c",
+            "alliance_20261015_ci_extra_9e0eed3c",
+            "alliance_20261015_ci_9e0eed3c_extra",
+            "alliance_20261015_ci_",
+        ):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "Cannot resolve datasource"):
+                aliases.resolve_dataset(name)
+
     def test_complete_build_names_and_custom_source_overrides(self):
         self.assertEqual("drug_rep_hub", aliases.resolve_dataset(index("drug_rep_hub", "abc123")))
         self.assertEqual("alliance", aliases.resolve_dataset("alliance"))
@@ -239,6 +258,23 @@ class StagingTests(unittest.TestCase):
 
 
 class PromotionTests(unittest.TestCase):
+    def test_release_replaces_legacy_ci_holders_without_source_overrides(self):
+        entries = {}
+        for source in ("alliance", "ubergraph_nodes", "ubergraph_nodes_info"):
+            policy = aliases.alias_policy(source)
+            entries[f"{source}_20261015_ci_9e0eed3c"] = [policy["production_alias"]]
+            entries[f"{source}_20261105_test_abcd1234"] = [policy["staging_alias"]]
+        client = FakeElasticsearch(entries)
+        result = aliases.release_indices(client)
+        self.assertTrue(result["verified"])
+        self.assertEqual(3, len(result["indices"]))
+        for source in ("alliance", "ubergraph_nodes", "ubergraph_nodes_info"):
+            self.assertEqual({"dingo_deprecated"}, client.entries[f"{source}_20261015_ci_9e0eed3c"]["aliases"])
+            self.assertEqual(
+                {aliases.alias_policy(source)["production_alias"]},
+                client.entries[f"{source}_20261105_test_abcd1234"]["aliases"],
+            )
+
     def test_partial_release_preserves_unselected_live_and_staging(self):
         old, new = index("alliance", "old"), index("alliance", "new")
         bgee_old, bgee_new = index("bgee", "old"), index("bgee", "new")

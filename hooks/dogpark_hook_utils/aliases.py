@@ -81,7 +81,7 @@ def resolve_dataset(index_name, source=None):
     _exact_name(index_name)
     inferred = index_name if index_name in builds.DOGPARK_MANAGED_DATASETS else None
     if inferred is None:
-        match = re.fullmatch(r"(.+)_(\d{8})_([a-z0-9]+)", index_name)
+        match = re.fullmatch(r"(.+)_(\d{8})_(?:(?:ci|test|prod|dev)_)?([a-z0-9]+)", index_name)
         if match and match[1] in builds.DOGPARK_MANAGED_DATASETS:
             try:
                 datetime.strptime(match[2], "%Y%m%d")

@@ -60,7 +60,9 @@ An already-live index is a no-op. Deprecated or deletion-tagged incoming indices
 are rejected.
 
 Standard names use `DATASET_YYYYMMDD_ID`, with a valid date and lowercase
-alphanumeric ID. Exact dataset names are also recognized unless they collide
+alphanumeric ID. Legacy names may insert `ci`, `test`, `prod`, or `dev` between
+the date and ID, for example `alliance_20261015_ci_9e0eed3c`.
+Exact dataset names are also recognized unless they collide
 with a managed alias, such as `ubergraph_nodes`. Custom names require
 `--sources '{"custom-index":"alliance"}'` for batch tagging or release, or
 `--source alliance` for single-index tagging. Include mappings for custom active
